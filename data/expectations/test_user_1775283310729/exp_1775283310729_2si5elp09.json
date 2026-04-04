@@ -1,0 +1,13 @@
+{
+  "id": "exp_1775283310729_2si5elp09",
+  "userId": "test_user_1775283310729",
+  "createdAt": "2026-04-04T06:15:10.729Z",
+  "expectation": "测试预期",
+  "confidence": 80,
+  "reasoning": "推理",
+  "reviewStatus": "completed",
+  "actualOutcome": "实际结果",
+  "outcomeDate": "2026-04-04T06:15:10.730Z",
+  "gap": "差距分析",
+  "learning": "学习心得"
+}

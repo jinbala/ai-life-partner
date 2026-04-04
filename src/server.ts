@@ -6,6 +6,12 @@ import { PortraitManager } from './core/portraitManager';
 import { GoalManager } from './core/goalManager';
 import { FeishuMessageService, FeishuSchedulerService } from './feishu/messageService';
 import { InputValidator, generateSystemPrompt } from './core/aiPersona';
+import { MemoryManager } from './core/memoryManager';
+import { AbilityAssetManager } from './core/abilityAssetManager';
+import { AutoReviewManager } from './core/autoReviewManager';
+import { CognitionChallengeManager } from './core/cognitionChallenge';
+import { DecisionFeedbackManager } from './core/decisionFeedback';
+import { SilentAnalysisManager } from './core/silentAnalysisManager';
 
 dotenv.config();
 
@@ -63,10 +69,19 @@ const schedulerService = new FeishuSchedulerService();
 interface UserSession {
   portraitManager: PortraitManager;
   goalManager: GoalManager;
+  memoryManager: MemoryManager;
+  assetsManager: AbilityAssetManager;
+  autoReviewManager: AutoReviewManager;
+  challengeManager: CognitionChallengeManager;
+  decisionManager: DecisionFeedbackManager;
+  silentAnalysis: SilentAnalysisManager;
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
   isInitializingPortrait: boolean;
   portraitQuestionsQueue: string[];
   currentFocus?: string;
+  hasPendingChallenge: boolean;
+  hasPendingDecisionReview: boolean;
+  pendingDecisionId?: string;
 }
 
 const userSessions = new Map<string, UserSession>();
@@ -133,12 +148,36 @@ function registerUser(openId: string) {
  */
 function getUserSession(userId: string): UserSession {
   if (!userSessions.has(userId)) {
+    const portraitManager = new PortraitManager(userId);
+    const goalManager = new GoalManager(userId);
+    const memoryManager = new MemoryManager(userId);
+    const assetsManager = new AbilityAssetManager(userId);
+    const autoReviewManager = new AutoReviewManager(userId);
+    const challengeManager = new CognitionChallengeManager(userId);
+    const decisionManager = new DecisionFeedbackManager(userId);
+    const silentAnalysis = new SilentAnalysisManager(
+      userId,
+      portraitManager,
+      goalManager,
+      memoryManager,
+      assetsManager,
+      autoReviewManager
+    );
+
     userSessions.set(userId, {
-      portraitManager: new PortraitManager(userId),
-      goalManager: new GoalManager(userId),
+      portraitManager,
+      goalManager,
+      memoryManager,
+      assetsManager,
+      autoReviewManager,
+      challengeManager,
+      decisionManager,
+      silentAnalysis,
       conversationHistory: [],
       isInitializingPortrait: false,
       portraitQuestionsQueue: [],
+      hasPendingChallenge: false,
+      hasPendingDecisionReview: false,
     });
   }
   return userSessions.get(userId)!;
@@ -153,12 +192,79 @@ async function handleUserMessage(
   registerUser(openId);
 
   const session = getUserSession(userId);
-  const { goalManager, portraitManager } = session;
+  const { goalManager, portraitManager, memoryManager, assetsManager, challengeManager, decisionManager, silentAnalysis } = session;
 
   // 检查是否是命令
   if (content.startsWith('/')) {
     await handleCommand(userId, openId, content);
     return;
+  }
+
+  // 优先级 1：回答认知挑战
+  const pendingChallenge = challengeManager.getPendingChallenge();
+  if (pendingChallenge && !session.hasPendingChallenge) {
+    session.hasPendingChallenge = true;
+  }
+  if (session.hasPendingChallenge && pendingChallenge) {
+    // 用户正在回答挑战
+    try {
+      const portrait = portraitManager.load();
+      const result = await challengeManager.evaluateAnswer(pendingChallenge.id, content, portrait);
+
+      // 更新能力分数
+      if (result.ability_adjustment !== 0) {
+        const p = portraitManager.load();
+        const dim = pendingChallenge.related_ability as keyof typeof p.abilities;
+        if (p.abilities[dim] !== undefined) {
+          p.abilities[dim] += result.ability_adjustment;
+          p.abilities[dim] = Math.max(1, Math.min(10, p.abilities[dim]));
+          portraitManager.save(p);
+        }
+      }
+
+      session.hasPendingChallenge = false;
+      await messageService.sendTextMessage(openId, `🧠 认知挑战评估\n\n${result.evaluation}\n\n得分：${result.score}/10\n洞察：${result.insight}`);
+
+      // 异步静默分析
+      silentAnalysis.analyze(content).catch(e => console.error('[SilentAnalysis] 失败:', e));
+      return;
+    } catch (error) {
+      console.error('[Challenge] 评估失败:', error);
+    }
+  }
+
+  // 优先级 2：回答决策复盘
+  const pendingDecisions = decisionManager.checkPendingDecisions();
+  if (pendingDecisions.length > 0 && !session.hasPendingDecisionReview) {
+    session.hasPendingDecisionReview = true;
+    session.pendingDecisionId = pendingDecisions[0].id;
+    // 发送提醒
+    const d = pendingDecisions[0];
+    const verifyDate = d.verify_date ? new Date(d.verify_date).toLocaleDateString('zh-CN') : '之前';
+    await messageService.sendTextMessage(
+      openId,
+      `⏰ 决策复盘提醒\n\n${verifyDate} 前你做了一个决策：\n话题：${d.topic}\n你的选择：${d.chosen}\n预期结果：${d.expected_outcome}\n\n实际结果怎么样？直接告诉我。`
+    );
+  }
+  if (session.hasPendingDecisionReview && session.pendingDecisionId) {
+    try {
+      const feedback = await decisionManager.closeDecisionLoop(
+        session.pendingDecisionId,
+        content,
+        portraitManager,
+        assetsManager,
+        memoryManager
+      );
+      session.hasPendingDecisionReview = false;
+      session.pendingDecisionId = undefined;
+      await messageService.sendTextMessage(openId, `📊 决策复盘完成\n\n${feedback}`);
+
+      // 异步静默分析
+      silentAnalysis.analyze(content).catch(e => console.error('[SilentAnalysis] 失败:', e));
+      return;
+    } catch (error) {
+      console.error('[Decision] 闭环失败:', error);
+    }
   }
 
   // 检查是否在画像初始化流程中
@@ -201,6 +307,13 @@ async function handleUserMessage(
   // 获取用户上下文
   const portraitSummary = portraitManager.getSummary();
   const goalSummary = goalManager.getSummary();
+  const memorySummary = memoryManager.getSummary();
+  const assetsSummary = assetsManager.getSummary();
+
+  // 检索相关记忆和资产
+  const keywords = extractKeywords(content);
+  const relatedMemories = memoryManager.search(keywords);
+  const relatedAssets = assetsManager.search(keywords);
 
   // 构建对话历史
   session.conversationHistory.push({ role: 'user', content });
@@ -212,6 +325,8 @@ async function handleUserMessage(
   if (content.includes('急') || content.includes('紧急')) {
     const response = await aiService.quickDecision(content);
     await messageService.sendTextMessage(openId, response);
+    // 异步静默分析
+    silentAnalysis.analyze(content).catch(e => console.error('[SilentAnalysis] 失败:', e));
     return;
   }
 
@@ -222,6 +337,8 @@ async function handleUserMessage(
   if (isDecisionMode) {
     const response = await aiService.decisionAnalysis(content, portraitSummary);
     await messageService.sendTextMessage(openId, response);
+    // 异步静默分析
+    silentAnalysis.analyze(content).catch(e => console.error('[SilentAnalysis] 失败:', e));
     return;
   }
 
@@ -230,8 +347,13 @@ async function handleUserMessage(
     currentFocus: session.currentFocus,
   });
 
+  // 注入记忆和资产
+  const memoriesText = memoryManager.formatForPrompt(relatedMemories);
+  const assetsText = assetsManager.formatForPrompt(relatedAssets);
+  const extraContext = [memoriesText, assetsText].filter(Boolean).join('\n\n');
+
   const messages: ChatMessage[] = [
-    { role: 'system', content: `${systemPrompt}\n\n用户画像：${portraitSummary}\n目标状态：${goalSummary}` },
+    { role: 'system', content: `${systemPrompt}\n\n用户画像：${portraitSummary}\n目标状态：${goalSummary}\n${extraContext ? extraContext + '\n' : ''}` },
     ...session.conversationHistory.map(h => ({ role: h.role, content: h.content }) as ChatMessage),
   ];
 
@@ -239,6 +361,28 @@ async function handleUserMessage(
 
   await messageService.sendTextMessage(openId, response.content);
   session.conversationHistory.push({ role: 'assistant', content: response.content });
+
+  // 异步静默分析（不阻塞回复）
+  silentAnalysis.analyze(content).catch(e => console.error('[SilentAnalysis] 失败:', e));
+}
+
+/**
+ * 提取关键词（简化版中文分词）
+ */
+function extractKeywords(text: string, limit: number = 10): string[] {
+  // 中文：按字符分割，过滤掉标点
+  const chineseChars = text.match(/[\u4e00-\u9fa5]/g) || [];
+  // 英文：按空格分割
+  const englishWords = text.match(/[a-zA-Z]+/g) || [];
+
+  // 合并并去重
+  const all = [...chineseChars, ...englishWords];
+  const freq = new Map<string, number>();
+  all.forEach(w => freq.set(w, (freq.get(w) || 0) + 1));
+
+  // 按频率排序
+  const sorted = Array.from(freq.entries()).sort((a, b) => b[1] - a[1]);
+  return sorted.slice(0, limit).map(([word]) => word);
 }
 
 /**
@@ -246,23 +390,44 @@ async function handleUserMessage(
  */
 async function handleCommand(userId: string, openId: string, command: string) {
   const session = getUserSession(userId);
-  const { goalManager, portraitManager } = session;
+  const { goalManager, portraitManager, memoryManager, assetsManager, challengeManager, decisionManager } = session;
 
   const cmd = command.toLowerCase().trim();
+  const cmdRaw = command.trim(); // 保留原始大小写用于参数解析
 
   if (cmd === '/help') {
     await messageService.sendTextMessage(
       openId,
       `📖 命令列表：
 
-/help - 显示帮助
+【目标管理】
 /goals - 查看目标树
 /tasks - 查看今日任务
 /add-task <内容> - 添加今日任务
-/portrait - 查看当前画像
+
+【决策系统】
+/decisions - 查看决策历史
+/decision <id> - 查看决策详情
+
+【复盘系统】
+/review - 开始每日复盘
+/reviews - 查看复盘历史
+
+【能力资产】
+/assets - 查看能力资产
+/add-asset <类型> <内容> - 手动保存资产
+类型：教训/框架/流程/洞察/资源
+
+【认知挑战】
+/challenge - 查看挑战进度
+/challenge-now - 立即生成挑战
+
+【系统】
+/portrait - 查看用户画像
+/memories - 查看长期记忆
+/stats - 查看统计数据
 /reset - 重置会话
 /morning-push on|off - 控制早上推送
-/review-reminder on|off - 控制复盘提醒
 
 快捷用语：
 "紧急" - 紧急决策模式
@@ -292,11 +457,59 @@ async function handleCommand(userId: string, openId: string, command: string) {
       `决策风格：${portrait.behaviorPatterns.decisionStyle}\n` +
       `能力雷达：${JSON.stringify(portraitManager.getAbilityRadar(), null, 2)}`;
     await messageService.sendTextMessage(openId, text);
+  } else if (cmd === '/memories') {
+    const memories = memoryManager.loadAll();
+    if (memories.length === 0) {
+      await messageService.sendTextMessage(openId, '💭 暂无长期记忆');
+    } else {
+      const text = `💭 长期记忆（${memories.length}条）：\n` +
+        memories.slice(-10).map(m => `- [${m.type}] ${m.content} (${m.recall_count}次)`).join('\n');
+      await messageService.sendTextMessage(openId, text);
+    }
+  } else if (cmd === '/assets') {
+    const assets = assetsManager.load();
+    const total = Object.values(assets).flat().length;
+    if (total === 0) {
+      await messageService.sendTextMessage(openId, '💎 暂无能力资产');
+    } else {
+      const text = `💎 能力资产（${total}条）：\n` +
+        `框架：${assets.frameworks.length} | ` +
+        `教训：${assets.lessons.length} | ` +
+        `流程：${assets.sops.length} | ` +
+        `洞察：${assets.insights.length} | ` +
+        `资源：${assets.resources.length}`;
+      await messageService.sendTextMessage(openId, text);
+    }
+  } else if (cmdRaw.startsWith('/add-asset ')) {
+    const args = command.substring('/add-asset '.length).split(' ');
+    const type = args[0];
+    const content = args.slice(1).join(' ');
+    if (!content) {
+      await messageService.sendTextMessage(openId, '用法：/add-asset <类型> <内容>\n类型：教训/框架/流程/洞察/资源');
+      return;
+    }
+    const asset = assetsManager.manualSave(type, content);
+    await messageService.sendTextMessage(openId, `✅ 已保存到 [${type}]：${asset.title}`);
+  } else if (cmd === '/challenge') {
+    await messageService.sendTextMessage(openId, `🧠 ${challengeManager.getSummary()}`);
+  } else if (cmd === '/challenge-now') {
+    try {
+      const portrait = portraitManager.load();
+      const goals = [goalManager.getSummary()];
+      const recentTopics = session.conversationHistory.map(h => h.content).slice(-5);
+      const recentChallenges = challengeManager.load();
+      const challenge = await challengeManager.generateChallenge(portrait, goals, recentTopics, recentChallenges);
+      await messageService.sendTextMessage(openId, `🧠 认知挑战\n\n${challenge.question}\n\n请认真思考后回复。`);
+    } catch (error) {
+      await messageService.sendTextMessage(openId, '生成挑战失败，请稍后再试。');
+    }
+  } else if (cmd === '/decisions') {
+    await messageService.sendTextMessage(openId, `📊 ${decisionManager.getSummary()}`);
   } else if (cmd === '/reset') {
     session.conversationHistory = [];
     session.currentFocus = undefined;
     await messageService.sendTextMessage(openId, '✅ 会话已重置');
-  } else if (cmd.includes('复盘')) {
+  } else if (cmdRaw.includes('复盘')) {
     await messageService.sendTextMessage(
       openId,
       `📝 每日复盘

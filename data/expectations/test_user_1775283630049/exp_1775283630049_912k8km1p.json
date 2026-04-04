@@ -1,0 +1,13 @@
+{
+  "id": "exp_1775283630049_912k8km1p",
+  "userId": "test_user_1775283630049",
+  "createdAt": "2026-04-04T06:20:30.049Z",
+  "expectation": "测试预期",
+  "confidence": 80,
+  "reasoning": "推理",
+  "reviewStatus": "completed",
+  "actualOutcome": "实际结果",
+  "outcomeDate": "2026-04-04T06:20:30.050Z",
+  "gap": "差距分析",
+  "learning": "学习心得"
+}

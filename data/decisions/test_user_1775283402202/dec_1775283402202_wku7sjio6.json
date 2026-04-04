@@ -1,0 +1,26 @@
+{
+  "id": "dec_1775283402202_wku7sjio6",
+  "userId": "unknown",
+  "createdAt": "2026-04-04T06:16:42.202Z",
+  "problem": "测试决策问题",
+  "assumptions": [
+    "测试假设"
+  ],
+  "information": [],
+  "options": [
+    {
+      "name": "选项 A",
+      "pros": [
+        "好"
+      ],
+      "cons": [
+        "贵"
+      ],
+      "score": 8
+    }
+  ],
+  "selectedOption": "选项 A",
+  "actionPlan": "行动计划",
+  "isEmergency": false,
+  "tags": []
+}
