@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { AIService, ChatMessage } from './aiService';
+import { AIService, ChatMessage } from '../ai';
 
 const DATA_DIR = path.join(__dirname, '../../data');
 

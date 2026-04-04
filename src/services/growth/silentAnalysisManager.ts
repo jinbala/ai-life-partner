@@ -1,9 +1,9 @@
-import { PortraitManager } from './portraitManager';
-import { GoalManager } from './goalManager';
-import { MemoryManager } from './memoryManager';
-import { AbilityAssetManager } from './abilityAssetManager';
-import { AutoReviewManager } from './autoReviewManager';
-import { AIService, ChatMessage } from './aiService';
+import { PortraitManager } from '../user';
+import { GoalManager } from '../user';
+import { MemoryManager } from '../memory';
+import { AbilityAssetManager } from '../assets';
+import { AutoReviewManager } from '.';
+import { AIService, ChatMessage } from '../ai';
 
 /**
  * 静默分析结果

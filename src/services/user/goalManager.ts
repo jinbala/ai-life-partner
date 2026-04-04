@@ -11,7 +11,7 @@ import {
   WeeklyGoal,
   DailyTask,
   GoalAlignmentCheck
-} from '../types/goal';
+} from '../../types';
 
 const DATA_DIR = path.join(__dirname, '../../data');
 

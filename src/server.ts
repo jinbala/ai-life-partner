@@ -1,56 +1,41 @@
 import express from 'express';
-import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { AIService, ChatMessage } from './core/aiService';
-import { PortraitManager } from './core/portraitManager';
-import { GoalManager } from './core/goalManager';
-import { FeishuMessageService, FeishuSchedulerService } from './feishu/messageService';
-import { InputValidator, generateSystemPrompt } from './core/aiPersona';
-import { MemoryManager } from './core/memoryManager';
-import { AbilityAssetManager } from './core/abilityAssetManager';
-import { AutoReviewManager } from './core/autoReviewManager';
-import { CognitionChallengeManager } from './core/cognitionChallenge';
-import { DecisionFeedbackManager } from './core/decisionFeedback';
-import { SilentAnalysisManager } from './core/silentAnalysisManager';
+
+// 导入新重构的模块
+import { AIService, ChatMessage } from './services/ai';
+import { PortraitManager } from './services/user';
+import { GoalManager } from './services/user';
+import { FeishuMessageService, FeishuSchedulerService } from './integrations/feishu';
+import { generateSystemPrompt } from './services/ai';
+import { MemoryManager } from './services/memory';
+import { AbilityAssetManager } from './services/assets';
+import { AutoReviewManager } from './services/growth';
+import { CognitionChallengeManager } from './services/growth';
+import { DecisionFeedbackManager } from './services/decision';
+import { SilentAnalysisManager } from './services/growth';
+
+// 导入中间件
+import { requestLogger, requestId } from './api/middleware';
+import { healthRoutes, chatRoutes, feishuRoutes } from './api/routes';
+
+// 导入数据库
+import { initializeDatabase, closeDatabase, runMigrations } from './database';
+import { UserRepository, User } from './database/repositories';
+import { logger } from './utils/logger';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 飞书事件验证中间件
-function verifyFeishuSignature(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const signature = req.headers['x-feishu-signature'] as string;
-  const timestamp = req.headers['x-feishu-timestamp'] as string;
-  const nonce = req.headers['x-feishu-nonce'] as string;
-  const body = JSON.stringify(req.body);
+// 应用中间件
+app.use(express.json());
+app.use(requestId);
+app.use(requestLogger);
 
-  // 如果缺少签名头，跳过验证（兼容模式）
-  if (!signature || !timestamp || !nonce) {
-    next();
-    return;
-  }
-
-  const verificationToken = process.env.FEISHU_VERIFICATION_TOKEN;
-  if (!verificationToken) {
-    next();
-    return;
-  }
-
-  // 构建待签名字符串
-  const stringToSign = timestamp + nonce + verificationToken + body;
-  const computedSignature = crypto.createHash('sha256').update(stringToSign).digest('hex');
-
-  if (computedSignature !== signature) {
-    console.error('飞书签名验证失败');
-    res.status(401).send('签名验证失败');
-    return;
-  }
-
-  next();
-}
-
-app.use(express.json(), verifyFeishuSignature);
+// 初始化数据库
+initializeDatabase();
+runMigrations();
 
 // 静态文件服务（聊天页面）
 app.use(express.static('public'));
@@ -60,6 +45,11 @@ app.get('/chat', (req, res) => {
   res.sendFile('index.html', { root: 'public' });
 });
 
+// API 路由
+app.use('/health', healthRoutes);
+app.use('/chat/api', chatRoutes);
+app.use('/feishu', feishuRoutes);
+
 // 初始化服务
 const aiService = new AIService();
 const messageService = new FeishuMessageService();
@@ -67,6 +57,8 @@ const schedulerService = new FeishuSchedulerService();
 
 // 存储用户会话状态
 interface UserSession {
+  userId: string;
+  user: User;
   portraitManager: PortraitManager;
   goalManager: GoalManager;
   memoryManager: MemoryManager;
@@ -86,68 +78,19 @@ interface UserSession {
 
 const userSessions = new Map<string, UserSession>();
 
-// 用户注册表（用于定时推送）
-interface UserInfo {
-  openId: string;
-  registeredAt: string;
-  morningPushEnabled: boolean;
-  reviewReminderEnabled: boolean;
-}
-
-const userRegistry = new Map<string, UserInfo>();
-
-/**
- * 保存用户注册表
- */
-function saveUserRegistry() {
-  const fs = require('fs');
-  const path = require('path');
-  const dataDir = path.join(__dirname, '..', '..', 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  fs.writeFileSync(
-    path.join(dataDir, 'user-registry.json'),
-    JSON.stringify(Array.from(userRegistry.entries()), null, 2)
-  );
-}
-
-/**
- * 加载用户注册表
- */
-function loadUserRegistry() {
-  const fs = require('fs');
-  const path = require('path');
-  const dataPath = path.join(__dirname, '..', '..', 'data', 'user-registry.json');
-  if (fs.existsSync(dataPath)) {
-    const data = JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
-    data.forEach(([key, value]: [string, UserInfo]) => {
-      userRegistry.set(key, value);
-    });
-  }
-}
-
-/**
- * 注册用户（用于定时推送）
- */
-function registerUser(openId: string) {
-  if (!userRegistry.has(openId)) {
-    userRegistry.set(openId, {
-      openId,
-      registeredAt: new Date().toISOString(),
-      morningPushEnabled: true,
-      reviewReminderEnabled: true,
-    });
-    saveUserRegistry();
-    console.log(`新用户注册：${openId}`);
-  }
-}
+// 用户仓库（延迟初始化）
+let userRepository: UserRepository;
 
 /**
  * 获取或创建用户会话
  */
 function getUserSession(userId: string): UserSession {
   if (!userSessions.has(userId)) {
+    const user = userRepository?.findById(userId) || userRepository?.findOrCreate(userId) || null;
+    if (!user) {
+      throw new Error(`User not found: ${userId}`);
+    }
+
     const portraitManager = new PortraitManager(userId);
     const goalManager = new GoalManager(userId);
     const memoryManager = new MemoryManager(userId);
@@ -165,6 +108,8 @@ function getUserSession(userId: string): UserSession {
     );
 
     userSessions.set(userId, {
+      userId,
+      user,
       portraitManager,
       goalManager,
       memoryManager,
@@ -182,21 +127,27 @@ function getUserSession(userId: string): UserSession {
   }
   return userSessions.get(userId)!;
 }
+
+/**
+ * 获取或创建用户会话（通过 openId）
+ */
+function getSessionByOpenId(openId: string): UserSession {
+  const user = userRepository.findOrCreate(openId);
+  return getUserSession(user.id);
+}
+
 async function handleUserMessage(
   userId: string,
   openId: string,
   content: string,
   messageId: string
 ) {
-  // 注册用户（用于定时推送）
-  registerUser(openId);
-
-  const session = getUserSession(userId);
+  const session = getSessionByOpenId(openId);
   const { goalManager, portraitManager, memoryManager, assetsManager, challengeManager, decisionManager, silentAnalysis } = session;
 
   // 检查是否是命令
   if (content.startsWith('/')) {
-    await handleCommand(userId, openId, content);
+    await handleCommand(openId, content);
     return;
   }
 
@@ -388,8 +339,18 @@ function extractKeywords(text: string, limit: number = 10): string[] {
 /**
  * 处理命令
  */
-async function handleCommand(userId: string, openId: string, command: string) {
-  const session = getUserSession(userId);
+async function handleCommand(openId: string, command: string) {
+  if (!userRepository) {
+    userRepository = new UserRepository();
+  }
+
+  const user = userRepository.findByOpenId(openId);
+  if (!user) {
+    await messageService.sendTextMessage(openId, '用户未找到，请先重新开始对话。');
+    return;
+  }
+
+  const session = getUserSession(user.id);
   const { goalManager, portraitManager, memoryManager, assetsManager, challengeManager, decisionManager } = session;
 
   const cmd = command.toLowerCase().trim();
@@ -522,19 +483,17 @@ async function handleCommand(userId: string, openId: string, command: string) {
     );
   } else if (cmd.startsWith('/morning-push ')) {
     const action = command.substring('/morning-push '.length).trim().toLowerCase();
-    const userInfo = userRegistry.get(userId);
-    if (userInfo) {
-      userInfo.morningPushEnabled = (action === 'on' || action === 'true' || action === '开启');
-      saveUserRegistry();
-      await messageService.sendTextMessage(openId, `✅ 早上推送已${userInfo.morningPushEnabled ? '开启' : '关闭'}`);
+    if (user) {
+      const enabled = (action === 'on' || action === 'true' || action === '开启');
+      userRepository.updateSettings(user.id, { morning_push_enabled: enabled });
+      await messageService.sendTextMessage(openId, `✅ 早上推送已${enabled ? '开启' : '关闭'}`);
     }
   } else if (cmd.startsWith('/review-reminder ')) {
     const action = command.substring('/review-reminder '.length).trim().toLowerCase();
-    const userInfo = userRegistry.get(userId);
-    if (userInfo) {
-      userInfo.reviewReminderEnabled = (action === 'on' || action === 'true' || action === '开启');
-      saveUserRegistry();
-      await messageService.sendTextMessage(openId, `✅ 复盘提醒已${userInfo.reviewReminderEnabled ? '开启' : '关闭'}`);
+    if (user) {
+      const enabled = (action === 'on' || action === 'true' || action === '开启');
+      userRepository.updateSettings(user.id, { review_reminder_enabled: enabled });
+      await messageService.sendTextMessage(openId, `✅ 复盘提醒已${enabled ? '开启' : '关闭'}`);
     }
   }
 }
@@ -605,16 +564,20 @@ function scheduleMorningPush() {
  * 向所有启用早上推送的用户发送消息
  */
 async function sendMorningPushToAll() {
-  console.log('开始发送早上推送...');
+  logger.info('[MorningPush] 开始发送早上推送...');
 
   const today = new Date();
   const dateStr = today.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
 
-  for (const [userId, userInfo] of userRegistry.entries()) {
-    if (!userInfo.morningPushEnabled) continue;
+  if (!userRepository) {
+    userRepository = new UserRepository();
+  }
 
+  const users = userRepository.findWithMorningPushEnabled();
+
+  for (const user of users) {
     try {
-      const session = getUserSession(userId);
+      const session = getUserSession(user.id);
       const goalSummary = session.goalManager.getSummary();
       const tasks = session.goalManager.getTodayTasks();
 
@@ -631,18 +594,15 @@ async function sendMorningPushToAll() {
       content += `💬 当前目标：${goalSummary || '暂无明确目标'}\n\n`;
       content += `今天有什么重要计划？随时跟我聊聊。`;
 
-      await messageService.sendTextMessage(userInfo.openId, content);
-      console.log(`早上推送已发送给 ${userId}`);
+      await messageService.sendTextMessage(user.open_id, content);
+      logger.info('[MorningPush] 已发送给用户', { openId: user.open_id });
     } catch (error) {
-      console.error(`发送早上推送失败 (${userId}):`, error);
+      logger.error('[MorningPush] 发送失败', { openId: user.open_id, error });
     }
   }
-}
 
-// 启动服务器前添加一个简单的健康检查接口
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', model: aiService.getModelInfo() });
-});
+  logger.info('[MorningPush] 推送完成', { count: users.length });
+}
 
 // 测试接口 - 用于测试 AI 连接
 app.post('/test-ai', async (req, res) => {
@@ -662,12 +622,28 @@ app.listen(PORT, () => {
   console.log(`🏥 健康检查：GET http://localhost:${PORT}/health`);
   console.log(`🧪 测试接口：POST http://localhost:${PORT}/test-ai`);
 
-  // 加载用户注册表
-  loadUserRegistry();
-  console.log(`👥 已加载 ${userRegistry.size} 个注册用户`);
+  // 初始化用户仓库（在数据库表创建之后）
+  const userRepository = new UserRepository();
+
+  // 从数据库加载用户统计
+  const allUsers = userRepository.findAll();
+  console.log(`👥 已加载 ${allUsers.length} 个注册用户`);
 
   // 启动定时任务
   scheduleMorningPush();
+});
+
+// 优雅关闭
+process.on('SIGTERM', () => {
+  logger.info('[Server] 收到 SIGTERM 信号，正在关闭...');
+  closeDatabase();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  logger.info('[Server] 收到 SIGINT 信号，正在关闭...');
+  closeDatabase();
+  process.exit(0);
 });
 
 export default app;

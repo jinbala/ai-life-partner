@@ -93,8 +93,10 @@ FEISHU_VERIFICATION_TOKEN=your_custom_token  # 自定义的验证 Token
 FEISHU_ENCRYPTION_KEY=  # 可选
 
 # AI 模型配置
-AI_MODEL_PROVIDER=deepseek
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
+AI_MODEL_PROVIDER=custom
+CUSTOM_API_BASE_URL=https://api.aipaibox.com/v1
+CUSTOM_API_MODEL=claude-sonnet-4-6
+CUSTOM_API_KEY=sk-xxxxxxxxxxxxxxxx
 
 # 服务器配置
 PORT=3000
@@ -216,6 +218,42 @@ sudo yum install logrotate
 }
 ```
 
+## 数据库备份
+
+项目使用 SQLite 数据库，数据存储在 `data/app.db`。
+
+### 定期备份
+
+```bash
+# 创建备份脚本 /opt/ai-life-partner/backup.sh
+#!/bin/bash
+BACKUP_DIR="/opt/ai-life-partner/backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+mkdir -p $BACKUP_DIR
+cp /opt/ai-life-partner/data/app.db $BACKUP_DIR/app_$DATE.db
+
+# 保留最近 30 天的备份
+find $BACKUP_DIR -name "app_*.db" -mtime +30 -delete
+echo "Backup completed: app_$DATE.db"
+
+# 添加定时任务（每天凌晨 2 点备份）
+crontab -e
+0 2 * * * /opt/ai-life-partner/backup.sh
+```
+
+### 恢复数据
+
+```bash
+# 停止服务
+pm2 stop ai-life-partner
+
+# 恢复数据库
+cp /opt/ai-life-partner/backups/app_20260404_120000.db /opt/ai-life-partner/data/app.db
+
+# 重启服务
+pm2 start ai-life-partner
+```
+
 ## 本地测试
 
 ### 使用 Ngrok 暴露本地服务
@@ -261,52 +299,102 @@ tail -f logs/app.log
 - 确保飞书后台的验证 Token 与之相同
 - 检查服务器时间是否准确（时区问题可能导致签名失效）
 
-**3. DeepSeek API 调用失败**
-- 检查 `.env` 中 `DEEPSEEK_API_KEY` 是否正确
+**3. API 调用失败**
+- 检查 `.env` 中 API 密钥是否正确
 - 检查服务器网络连接
 - 查看 API 额度是否充足
 
-**4. 文件写入失败**
+**4. 数据库错误**
 - 检查 `data/` 目录权限：`chmod 755 data`
-- 确保目录存在：`mkdir -p data logs`
+- 确保目录存在
+- 如表结构损坏，可删除 `data/app.db` 重启服务会自动重建
 
 **5. 定时推送未执行**
 - 检查服务是否持续运行：`pm2 status`
 - 查看日志中是否有 "发送早上推送" 的记录
-- 确认用户已被注册：查看 `data/user-registry.json`
+- 查询数据库中用户设置
 
-## 备份与恢复
+## 监控和告警
 
-### 数据备份
-
-```bash
-# 备份用户数据
-tar -czf backup-$(date +%Y%m%d).tar.gz data/
-
-# 上传到对象存储或下载本地
-```
-
-### 数据恢复
+### 健康检查端点
 
 ```bash
-tar -xzf backup-20260403.tar.gz -C /opt/ai-life-partner/
+# 定期检查服务状态
+curl -f http://localhost:3000/health || echo "Service is down!"
 ```
+
+### 使用 PM2 监控
+
+```bash
+# 查看服务状态
+pm2 status
+
+# 查看详细指标
+pm2 monit
+
+# 设置重启策略
+pm2 start dist/server.js --name ai-life-partner --restart-delay=30000 --max-restarts=5
+```
+
+## 安全建议
+
+1. **不要提交敏感信息**
+   - `.env` 文件已在 `.gitignore` 中
+   - 使用环境变量管理敏感配置
+
+2. **启用 HTTPS**
+   - 生产环境必须使用 HTTPS
+   - 使用 Let's Encrypt 免费证书
+
+3. **限制 API 访问**
+   - 配置 API Key 认证中间件
+   - 设置速率限制防止滥用
+
+4. **定期更新依赖**
+   ```bash
+   npm audit
+   npm update
+   ```
+
+## 性能优化
+
+1. **启用数据库 WAL 模式**（已默认启用）
+2. **配置连接池**（如使用 PostgreSQL）
+3. **添加 Redis 缓存**（可选）
+4. **使用 CDN 加速静态资源**
 
 ## 后续优化
 
-- [ ] 配置向量数据库（ChromaDB）用于长期记忆
+- [ ] 配置向量数据库用于长期记忆检索
 - [ ] 使用飞书多维表格做可视化看板
 - [ ] 添加监控告警（Prometheus + Grafana）
-- [ ] 数据库迁移（从 JSON 文件到 PostgreSQL）
 - [ ] 实现用户数据导出功能
 - [ ] 添加多用户隔离和权限管理
 
-## Phase 1 完成清单
+## 完成清单
 
+### Phase 1 - 核心层
 - [x] AI 人格（第一性原理 + 输入校验）
 - [x] 进化式用户画像
 - [x] 目标管理 + 早推送
 - [x] 飞书机器人基础框架
 - [x] 事件签名验证
-- [x] 用户注册表（定时推送支持）
+- [x] 用户数据库（SQLite）
 - [x] 部署文档
+- [x] Web 聊天界面
+
+### Phase 2 - 生长层
+- [x] 决策引擎（6 步框架）
+- [x] 紧急决策快速通道
+- [x] 复盘系统（日/周/月）
+- [x] 能力资产库
+- [x] 预期 - 结果闭环
+- [x] 长期记忆系统
+
+### Phase 3 - 进化层（规划中）
+- [ ] 预警系统
+- [ ] 认知挑战（周二/周五）
+- [ ] 元认知训练
+- [ ] 环境变量提醒
+- [ ] 战略止损线
+- [ ] 体检报告（月/季/半年）

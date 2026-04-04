@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { UserPortrait, createDefaultPortrait, AbilityChange, DecisionRecord, CognitionUpgrade } from '../types/portrait';
+import { UserPortrait, createDefaultPortrait, AbilityChange, DecisionRecord, CognitionUpgrade } from '../../types';
 
 const DATA_DIR = path.join(__dirname, '../../data');
 

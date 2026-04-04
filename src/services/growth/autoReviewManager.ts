@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { AIService, ChatMessage } from './aiService';
+import { AIService, ChatMessage } from '../ai';
 
 const DATA_DIR = path.join(__dirname, '../../data');
 
