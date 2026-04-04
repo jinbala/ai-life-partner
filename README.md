@@ -8,9 +8,17 @@
 - 会挑战你、质疑你、拉住你、逼你成长
 - 终极目标：你自己越来越强，最终不再需要它
 
+## ✨ 最新功能
+
+- 🖥️ **可视化聊天界面** - 浏览器直接对话，无需飞书
+- 🔌 **多模型支持** - Claude/GPT/DeepSeek/Kimi 等，支持自定义 API 中转
+- 📱 **飞书机器人** - 在飞书中随时沟通
+- 🎯 **目标管理** - 追踪你的长期目标和每日任务
+- 🧠 **决策分析** - 6 步决策框架，帮你理清思路
+
 ## 快速开始
 
-### 1. 环境准备
+### 1. 安装依赖
 
 ```bash
 npm install
@@ -18,29 +26,44 @@ npm install
 
 ### 2. 配置环境变量
 
-复制 `.env.example` 到 `.env` 并填写配置：
+复制 `.env.example` 到 `.env`：
 
 ```bash
 cp .env.example .env
 ```
 
-需要配置：
-- `FEISHU_APP_ID` - 飞书应用 ID
-- `FEISHU_APP_SECRET` - 飞书应用密钥
-- `DEEPSEEK_API_KEY` - DeepSeek API 密钥
-
-### 3. 本地开发
+编辑 `.env` 配置 API 密钥：
 
 ```bash
-npm run dev
+# AI 模型配置（支持多种提供商）
+AI_MODEL_PROVIDER=custom
+CUSTOM_API_BASE_URL=https://api.aipaibox.com/v1
+CUSTOM_API_MODEL=claude-sonnet-4-6
+CUSTOM_API_KEY=sk-xxx
+
+# 飞书应用配置（可选，仅在飞书使用时需要）
+FEISHU_APP_ID=
+FEISHU_APP_SECRET=
+FEISHU_VERIFICATION_TOKEN=
+
+# 服务器配置
+PORT=3000
 ```
 
-### 4. 构建生产版本
+### 3. 启动服务
 
 ```bash
+# 开发模式（推荐）
+npm run dev
+
+# 或构建后运行
 npm run build
 npm start
 ```
+
+### 4. 访问聊天界面
+
+打开浏览器访问：**http://localhost:3000/chat**
 
 ## 功能模块
 
