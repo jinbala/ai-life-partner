@@ -2,6 +2,9 @@
  * 成长服务模块
  */
 
-export * from './cognitionChallenge';
-export * from './autoReviewManager';
-export * from './silentAnalysisManager';
+export { CognitionChallengeManager } from './cognitionChallenge';
+export { AutoReviewManager } from './autoReviewManager';
+export { SilentAnalysisManager } from './silentAnalysisManager';
+export { CognitionChallengeService } from './cognitionChallengeService';
+export { ReviewService } from './reviewService';
+export type { Challenge as ChallengeService } from './cognitionChallengeService';

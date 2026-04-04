@@ -2,4 +2,6 @@
  * 决策服务模块
  */
 
-export * from './decisionFeedback';
+export { DecisionFeedbackManager } from './decisionFeedback';
+export { DecisionFeedbackService } from './decisionFeedbackService';
+export type { DecisionRecord as DecisionFeedbackRecord } from './decisionFeedback';

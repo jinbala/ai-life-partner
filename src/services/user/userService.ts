@@ -1,0 +1,74 @@
+/**
+ * 用户综合服务层
+ * 统一管理所有子服务
+ */
+
+import { PortraitService } from './portraitService';
+import { GoalService } from './goalService';
+import { MemoryService } from '../memory/memoryService';
+import { AbilityAssetService } from '../assets/abilityAssetService';
+import { DecisionFeedbackService } from '../decision/decisionFeedbackService';
+import { CognitionChallengeService } from '../growth/cognitionChallengeService';
+import { ReviewService } from '../growth/reviewService';
+
+/**
+ * 综合服务实例
+ */
+export class UserService {
+  public readonly portrait: PortraitService;
+  public readonly goals: GoalService;
+  public readonly memories: MemoryService;
+  public readonly assets: AbilityAssetService;
+  public readonly decisions: DecisionFeedbackService;
+  public readonly challenges: CognitionChallengeService;
+  public readonly reviews: ReviewService;
+
+  constructor(userId: string) {
+    this.portrait = new PortraitService(userId);
+    this.goals = new GoalService(userId);
+    this.memories = new MemoryService(userId);
+    this.assets = new AbilityAssetService(userId);
+    this.decisions = new DecisionFeedbackService(userId);
+    this.challenges = new CognitionChallengeService(userId);
+    this.reviews = new ReviewService(userId);
+  }
+
+  /**
+   * 获取所有服务的摘要
+   */
+  getSummary(): string {
+    const parts: string[] = [];
+
+    const portraitSummary = this.portrait.getSummary();
+    if (portraitSummary) parts.push(`[画像] ${portraitSummary}`);
+
+    const goalSummary = this.goals.getSummary();
+    if (goalSummary) parts.push(`[目标] ${goalSummary}`);
+
+    const memorySummary = this.memories.getSummary();
+    if (memorySummary) parts.push(`[记忆] ${memorySummary}`);
+
+    const assetSummary = this.assets.getSummary();
+    if (assetSummary) parts.push(`[资产] ${assetSummary}`);
+
+    const decisionSummary = this.decisions.getSummary();
+    if (decisionSummary) parts.push(`[决策] ${decisionSummary}`);
+
+    const challengeSummary = this.challenges.getSummary();
+    if (challengeSummary) parts.push(`[挑战] ${challengeSummary}`);
+
+    const reviewSummary = this.reviews.getSummary();
+    if (reviewSummary) parts.push(`[复盘] ${reviewSummary}`);
+
+    return parts.join('\n') || '暂无数据';
+  }
+
+  /**
+   * 清除所有缓存
+   */
+  clearCache(): void {
+    this.portrait.clearCache();
+    this.memories.clearCache();
+    this.assets.clearCache();
+  }
+}

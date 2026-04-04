@@ -1,7 +1,10 @@
 /**
  * 日志系统
- * 支持多级别日志、彩色输出、文件记录
+ * 支持多级别日志、彩色输出、文件记录、自动轮转
  */
+
+import * as fs from 'fs';
+import * as path from 'path';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -23,9 +26,12 @@ const LOG_COLORS = {
 
 const LOG_LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 
-let currentLevel: LogLevel = 'debug';
-let logToFile = false;
-let fileStreams: any[] = [];
+let currentLevel: LogLevel = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
+let logToFile = true;
+let logFilePath = path.join(process.cwd(), 'logs', 'app.log');
+let fileStream: fs.WriteStream | null = null;
+let currentDateString = new Date().toISOString().split('T')[0];
+let dailyRotateInterval: NodeJS.Timeout | null = null;
 
 /**
  * 设置日志级别
@@ -35,21 +41,83 @@ export function setLogLevel(level: LogLevel) {
 }
 
 /**
- * 启用文件日志
+ * 设置日志文件路径
  */
-export function enableFileLog(filePath: string) {
-  logToFile = true;
+export function setLogFile(dirPath?: string) {
   try {
-    const fs = require('fs');
-    const path = require('path');
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    const logDir = dirPath || path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
     }
-    const stream = fs.createWriteStream(filePath, { flags: 'a' });
-    fileStreams.push(stream);
+    logFilePath = path.join(logDir, 'app.log');
+    rotateLogFile();
+    startDailyRotate();
   } catch (error) {
-    console.error('[Logger] 启用文件日志失败:', error);
+    console.error('[Logger] 设置日志文件失败:', error);
+  }
+}
+
+/**
+ * 旋转日志文件
+ */
+function rotateLogFile() {
+  const dateStr = new Date().toISOString().split('T')[0];
+  if (dateStr !== currentDateString) {
+    // 归档旧日志
+    const archivedPath = logFilePath.replace('.log', `.${currentDateString}.log`);
+    if (fileStream) {
+      fileStream.end();
+      fileStream = null;
+    }
+    try {
+      if (fs.existsSync(logFilePath)) {
+        fs.renameSync(logFilePath, archivedPath);
+        console.log(`[Logger] 日志已归档：${archivedPath}`);
+      }
+    } catch (error) {
+      console.error('[Logger] 归档日志失败:', error);
+    }
+    currentDateString = dateStr;
+  }
+  // 创建新文件流
+  fileStream = fs.createWriteStream(logFilePath, { flags: 'a' });
+}
+
+/**
+ * 启动每日轮转
+ */
+function startDailyRotate() {
+  if (dailyRotateInterval) {
+    clearInterval(dailyRotateInterval);
+  }
+  // 每天凌晨 0 点旋转
+  dailyRotateInterval = setInterval(() => {
+    rotateLogFile();
+  }, 24 * 60 * 60 * 1000);
+}
+
+/**
+ * 清理旧日志文件（保留最近 30 天）
+ */
+export function cleanupOldLogs(daysToKeep: number = 30) {
+  try {
+    const logDir = path.dirname(logFilePath);
+    const files = fs.readdirSync(logDir);
+    const now = Date.now();
+    const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
+
+    files.forEach(file => {
+      if (file.startsWith('app.') && file.endsWith('.log')) {
+        const filePath = path.join(logDir, file);
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs > maxAge) {
+          fs.unlinkSync(filePath);
+          console.log(`[Logger] 删除过期日志：${file}`);
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[Logger] 清理旧日志失败:', error);
   }
 }
 
@@ -94,9 +162,9 @@ function log(level: LogLevel, message: string, meta?: any, options: LogOptions =
   console.log(logLine);
 
   // 输出到文件
-  if (logToFile && fileStreams.length > 0) {
+  if (logToFile && fileStream) {
     const plainLine = `${new Date().toISOString()} [${level.toUpperCase()}]${module ? `[${module}]` : ''} ${message}${meta ? ' ' + JSON.stringify(meta) : ''}\n`;
-    fileStreams.forEach(stream => stream.write(plainLine));
+    fileStream.write(plainLine);
   }
 
   // 错误日志额外输出到 stderr

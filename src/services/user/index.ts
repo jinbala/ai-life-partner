@@ -4,3 +4,6 @@
 
 export * from './portraitManager';
 export * from './goalManager';
+export * from './portraitService';
+export * from './goalService';
+export * from './userService';

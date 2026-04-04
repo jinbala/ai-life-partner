@@ -49,7 +49,7 @@ export function initializeDatabase(): void {
     CREATE TABLE IF NOT EXISTS user_portraits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL,
-      version INTEGER NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
       industry TEXT,
       income_structure TEXT,
       resources TEXT,
@@ -57,6 +57,7 @@ export function initializeDatabase(): void {
       stuck_points TEXT,
       procrastination_triggers TEXT,
       abilities TEXT,
+      growth_track TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -204,6 +205,22 @@ export function initializeDatabase(): void {
     )
   `);
 
+  // 会话表
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      conversation_history TEXT,
+      current_focus TEXT,
+      has_pending_challenge INTEGER DEFAULT 0,
+      has_pending_decision_review INTEGER DEFAULT 0,
+      pending_decision_id TEXT,
+      last_active_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   // 创建索引
   database.exec(`
     CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id, type);
@@ -212,6 +229,7 @@ export function initializeDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_assets_user ON ability_assets(user_id, type);
     CREATE INDEX IF NOT EXISTS idx_decisions_user ON decisions(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_challenges_user ON challenges(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
   `);
 
   logger.info('[Database] 数据库表结构已初始化');
