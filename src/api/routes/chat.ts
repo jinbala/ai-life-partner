@@ -24,8 +24,8 @@ interface ChatSession {
 /**
  * 获取或创建聊天会话
  */
-function getChatSession(sessionId: string): ChatSession {
-  const sessionData = sessionManager.getOrCreateSession(sessionId);
+function getChatSession(sessionId: string, userId?: string): ChatSession {
+  const sessionData = sessionManager.getOrCreateSession(sessionId, userId || 'anonymous');
 
   if (!sessionData.metadata.chatSession) {
     sessionData.metadata.chatSession = {
@@ -57,8 +57,15 @@ router.post('/message', async (req: Request, res: Response) => {
     }
 
     const { userId, sessionId, message } = validation.data!;
-    const session = getChatSession(sessionId);
+    const session = getChatSession(sessionId, userId);
     const { conversationHistory, currentFocus } = session;
+
+    logger.debug('[Chat] 获取会话', {
+      sessionId,
+      userId,
+      historyLength: conversationHistory.length,
+      history: conversationHistory.slice(-3),
+    });
 
     // 添加用户消息到历史
     conversationHistory.push({ role: 'user', content: message });

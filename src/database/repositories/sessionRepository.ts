@@ -10,8 +10,8 @@ export interface Session {
   user_id: string;
   conversation_history: string | null;
   current_focus: string | null;
-  has_pending_challenge: boolean;
-  has_pending_decision_review: boolean;
+  has_pending_challenge: number;
+  has_pending_decision_review: number;
   pending_decision_id: string | null;
   last_active_at: string;
   created_at: string;
@@ -65,11 +65,8 @@ export class SessionRepository {
    * 查找会话
    */
   findById(id: string): Session | null {
-    const session = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as Session | null;
-    if (session) {
-      session.has_pending_challenge = Boolean(session.has_pending_challenge);
-      session.has_pending_decision_review = Boolean(session.has_pending_decision_review);
-    }
+    const sql = 'SELECT * FROM sessions WHERE id = ?';
+    const session = this.db.prepare(sql).get(id) as Session | null;
     return session;
   }
 
@@ -80,11 +77,48 @@ export class SessionRepository {
     const session = this.db.prepare(
       'SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
     ).get(userId) as Session | null;
-    if (session) {
-      session.has_pending_challenge = Boolean(session.has_pending_challenge);
-      session.has_pending_decision_review = Boolean(session.has_pending_decision_review);
-    }
     return session;
+  }
+
+  /**
+   * 创建或更新会话（upsert）
+   * 注意：会先确保用户存在
+   */
+  upsert(id: string, userId: string, fields: Partial<CreateSessionInput> & {
+    has_pending_challenge?: boolean;
+    has_pending_decision_review?: boolean;
+    pending_decision_id?: string;
+  }): void {
+    const now = new Date().toISOString();
+
+    // 确保用户存在（外键约束）
+    this.db.prepare(`INSERT OR IGNORE INTO users (id, open_id, created_at, updated_at) VALUES (?, ?, datetime('now'), datetime('now'))`).run(userId, userId);
+
+    const existing = this.findById(id);
+
+    if (existing) {
+      // 更新现有记录
+      this.update(id, fields);
+    } else {
+      // 创建新记录
+      this.db.prepare(`
+        INSERT INTO sessions (
+          id, user_id, conversation_history, current_focus,
+          has_pending_challenge, has_pending_decision_review, pending_decision_id,
+          last_active_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        userId,
+        fields.conversation_history ? JSON.stringify(fields.conversation_history) : '[]',
+        fields.current_focus || null,
+        fields.has_pending_challenge ? 1 : 0,
+        fields.has_pending_decision_review ? 1 : 0,
+        fields.pending_decision_id || null,
+        now,
+        now
+      );
+    }
   }
 
   /**
