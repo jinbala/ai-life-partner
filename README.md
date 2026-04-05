@@ -96,9 +96,10 @@ ai-life-partner/
 │   │   ├── routes/             # 路由控制器
 │   │   │   ├── chat.ts         # 聊天接口
 │   │   │   ├── feishu.ts       # 飞书 webhook
-│   │   │   └── health.ts       # 健康检查
+│   │   │   ├── health.ts       # 健康检查
+│   │   │   └── visualization.ts # 数据可视化
 │   │   └── middleware/         # Express 中间件
-│   │       ├── auth.ts         # API 认证
+│   │       ├── auth.ts         # API 认证 + JWT
 │   │       └── logging.ts      # 请求日志
 │   │
 │   ├── services/               # 业务服务层
@@ -106,24 +107,43 @@ ai-life-partner/
 │   │   │   ├── aiService.ts    # 多模型调用
 │   │   │   └── aiPersona.ts    # AI 人设提示词
 │   │   ├── user/               # 用户服务
-│   │   │   ├── portraitManager.ts  # 用户画像
-│   │   │   └── goalManager.ts      # 目标管理
+│   │   │   ├── portraitService.ts  # 用户画像
+│   │   │   └── goalService.ts      # 目标管理
 │   │   ├── memory/             # 记忆服务
-│   │   │   └── memoryManager.ts    # 长期记忆
+│   │   │   └── memoryService.ts    # 长期记忆
 │   │   ├── assets/             # 资产服务
-│   │   │   └── abilityAssetManager.ts # 能力资产
+│   │   │   └── abilityAssetService.ts # 能力资产
+│   │   ├── decision/           # 决策服务
+│   │   │   └── decisionFeedbackService.ts # 决策闭环
 │   │   ├── growth/             # 成长服务
-│   │   │   ├── autoReviewManager.ts  # 自动复盘
-│   │   │   ├── cognitionChallenge.ts # 认知挑战
-│   │   │   └── silentAnalysisManager.ts # 静默分析
-│   │   └── decision/           # 决策服务
-│   │       └── decisionFeedback.ts # 决策闭环
+│   │   │   ├── cognitionChallengeService.ts  # 认知挑战
+│   │   │   └── reviewService.ts  # 复盘系统
+│   │   ├── scheduler/          # 定时任务
+│   │   │   └── schedulerService.ts
+│   │   └── export/             # 数据导出
+│   │       └── dataExportService.ts
 │   │
 │   ├── database/               # 数据库层
+│   │   ├── IDatabase.ts        # 数据库接口定义
+│   │   ├── DatabaseFactory.ts  # 数据库工厂
+│   │   ├── BaseRepository.ts   # Repository 基类
 │   │   ├── index.ts            # 数据库连接
 │   │   ├── migrations.ts       # 数据库迁移
+│   │   ├── adapters/           # 数据库适配器
+│   │   │   ├── SQLiteAdapter.ts
+│   │   │   └── MySQLAdapter.ts
 │   │   └── repositories/       # 数据仓库
-│   │       └── userRepository.ts
+│   │       ├── userRepository.ts
+│   │       ├── portraitRepository.ts
+│   │       ├── goalRepository.ts
+│   │       ├── dailyTaskRepository.ts
+│   │       ├── memoryRepository.ts
+│   │       ├── abilityAssetRepository.ts
+│   │       ├── decisionRepository.ts
+│   │       ├── challengeRepository.ts
+│   │       ├── reviewRepository.ts
+│   │       ├── sessionRepository.ts
+│   │       └── tokenUsageRepository.ts
 │   │
 │   ├── context/                # 上下文管理
 │   │   └── sessionManager.ts   # 会话管理
@@ -137,6 +157,7 @@ ai-life-partner/
 │   │
 │   ├── utils/                  # 工具函数
 │   │   ├── logger.ts           # 日志系统
+│   │   ├── validators.ts       # 数据验证
 │   │   └── errors.ts           # 错误处理
 │   │
 │   ├── types/                  # 类型定义
@@ -165,23 +186,57 @@ ai-life-partner/
 - **运行时**: Node.js 18+
 - **语言**: TypeScript 5.9
 - **框架**: Express 4.x
-- **数据库**: SQLite (better-sqlite3)
+- **数据库**: SQLite / MySQL 8.0+ (可切换)
 - **AI**: 多模型支持（OpenAI / DeepSeek / Claude / Kimi / Qwen / ZhiPU / Ollama）
 - **渠道**: 飞书机器人 + Web 聊天界面
 - **部署**: 支持本地开发/云服务器/Docker
 
 ## 数据库
 
-项目使用 SQLite 数据库存储用户数据，支持：
-- 用户管理和设置
-- 目标树和任务
-- 长期记忆（6 种类型）
-- 能力资产（5 种类型）
-- 决策记录和闭环
-- 认知挑战
-- 复盘记录
+项目支持 **SQLite** 和 **MySQL** 双数据库，可通过环境变量切换：
 
-详见：[DATABASE_OPTIMIZATION.md](DATABASE_OPTIMIZATION.md)
+### SQLite 模式（默认）
+
+无需额外配置，数据存储在 `data/app.db`：
+
+```bash
+# .env 文件中不配置 DB_* 变量即使用 SQLite
+NODE_ENV=development
+```
+
+### MySQL 模式
+
+在 `.env` 中添加以下配置：
+
+```bash
+# 数据库配置
+DB_TYPE=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=ai_life_partner
+```
+
+### MySQL 一键配置（Windows）
+
+以管理员身份运行 PowerShell 执行：
+
+```powershell
+.\scripts\setup-mysql.ps1
+```
+
+### Docker 方式运行 MySQL
+
+```bash
+docker run -d --name mysql-ai-life \
+  -e MYSQL_ROOT_PASSWORD=root123456 \
+  -e MYSQL_DATABASE=ai_life_partner \
+  -p 3306:3306 \
+  mysql:8.0
+```
+
+详见：[README.MySQL.md](README.MySQL.md)
 
 ## 使用方式
 
@@ -291,6 +346,15 @@ npm run clean
 - 偏差分析
 - 经验提取为资产
 
+### 7. 数据库架构
+
+采用 Repository 模式，支持 SQLite/MySQL 双数据库：
+- **IDatabase** - 统一数据库接口
+- **DatabaseFactory** - 工厂模式创建适配器
+- **BaseRepository** - 通用 CRUD 基类
+- **SQLiteAdapter/MySQLAdapter** - 数据库适配器
+- **getNowSql()** - 动态兼容时间函数
+
 ## 配置文件
 
 详见：[MODEL_CONFIG.md](MODEL_CONFIG.md)
@@ -343,4 +407,4 @@ ISC
 
 ---
 
-**最后更新**: 2026-04-04
+**最后更新**: 2026-04-05
