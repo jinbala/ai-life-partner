@@ -7,6 +7,7 @@ import { DecisionRepository, CreateDecisionInput } from '../../database/reposito
 import type { MemoryService } from '../memory/memoryService';
 import type { AbilityAssetService } from '../assets/abilityAssetService';
 import type { PortraitService } from '../user/portraitService';
+import { logger } from '../../utils/logger';
 
 export interface DecisionRecord {
   id: string;
@@ -115,7 +116,7 @@ export class DecisionFeedbackService {
     try {
       assetsManager.manualSave('教训', lessonLearned);
     } catch (e) {
-      console.error('[DecisionService] 保存资产失败:', e);
+      logger.error('[DecisionService] 保存资产失败', e);
     }
 
     // 更新画像

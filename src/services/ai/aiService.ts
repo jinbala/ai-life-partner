@@ -1,5 +1,8 @@
 import axios from 'axios';
 import { generateSystemPrompt, AI_PERSONA } from './aiPersona';
+import { logger } from '../../utils/logger';
+import { createError, ErrorType, toAppError } from '../../utils/errorHandler';
+import { TokenUsageRepository } from '../../database/repositories';
 
 export interface AIResponse {
   content: string;
@@ -100,6 +103,16 @@ export function getModelPreset(provider: string): ModelConfig {
 
 export class AIService {
   private config: ModelConfig;
+  private tokenUsageRepo: TokenUsageRepository;
+  // 模型定价（每 1000 tokens 的价格，单位：元）
+  private static readonly MODEL_PRICES: Record<string, { input: number; output: number }> = {
+    'deepseek-chat': { input: 0.002, output: 0.008 },
+    'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
+    'claude-sonnet-4-20250514': { input: 0.003, output: 0.015 },
+    'moonshot-v1-8k': { input: 0.012, output: 0.012 },
+    'qwen-plus': { input: 0.004, output: 0.012 },
+    'glm-4': { input: 0.05, output: 0.05 },
+  };
 
   constructor(config?: ModelConfig) {
     // 默认使用 deepseek，如果没配置则使用第一个可用的
@@ -111,8 +124,10 @@ export class AIService {
       this.config = getModelPreset(provider);
     }
 
+    this.tokenUsageRepo = new TokenUsageRepository();
+
     if (!this.config.apiKey && this.config.name !== 'Ollama') {
-      console.warn(`警告：${this.config.name} API 密钥未配置`);
+      logger.warn('[AI] API 密钥未配置', { provider: this.config.name });
     }
   }
 
@@ -155,7 +170,7 @@ export class AIService {
       );
 
       const choice = response.data.choices[0];
-      return {
+      const result = {
         content: choice.message?.content || '',
         usage: {
           promptTokens: response.data.usage?.prompt_tokens || 0,
@@ -163,11 +178,40 @@ export class AIService {
           totalTokens: response.data.usage?.total_tokens || 0,
         },
       };
+
+      // 记录 Token 使用
+      this.recordTokenUsage(result.usage);
+
+      return result;
     } catch (error) {
+      const appError = toAppError(error);
+
+      // 根据错误类型提供友好消息
+      let userMessage = 'AI 服务暂时不可用，请稍后重试';
+
       if (axios.isAxiosError(error)) {
-        throw new Error(`${this.config.name} API 错误：${error.response?.data?.message || error.message}`);
+        const status = error.response?.status;
+        if (status === 429) {
+          userMessage = '请求过于频繁，请稍后再试';
+        } else if (status === 401) {
+          userMessage = 'AI 服务认证失败，请检查 API 密钥配置';
+        } else if (status === 503 || status === 504) {
+          userMessage = 'AI 服务暂时不可用，请稍后重试';
+        }
       }
-      throw error;
+
+      logger.error('[AI] 请求失败', {
+        provider: this.config.name,
+        error: appError.details,
+        userMessage,
+      });
+
+      throw createError(
+        ErrorType.AI_SERVICE,
+        userMessage,
+        appError.details,
+        appError.statusCode
+      );
     }
   }
 
@@ -210,7 +254,7 @@ export class AIService {
       );
 
       const content = response.data.content?.[0]?.text || '';
-      return {
+      const result = {
         content,
         usage: {
           promptTokens: response.data.usage?.input_tokens || 0,
@@ -218,11 +262,36 @@ export class AIService {
           totalTokens: (response.data.usage?.input_tokens || 0) + (response.data.usage?.output_tokens || 0),
         },
       };
+
+      // 记录 Token 使用
+      this.recordTokenUsage(result.usage);
+
+      return result;
     } catch (error) {
+      const appError = toAppError(error);
+
+      let userMessage = 'AI 服务暂时不可用，请稍后重试';
+
       if (axios.isAxiosError(error)) {
-        throw new Error(`Claude API 错误：${error.response?.data?.message || error.message}`);
+        const status = error.response?.status;
+        if (status === 429) {
+          userMessage = '请求过于频繁，请稍后再试';
+        } else if (status === 401) {
+          userMessage = 'AI 服务认证失败，请检查 API 密钥配置';
+        }
       }
-      throw error;
+
+      logger.error('[AI] Claude 请求失败', {
+        error: appError.details,
+        userMessage,
+      });
+
+      throw createError(
+        ErrorType.AI_SERVICE,
+        userMessage,
+        appError.details,
+        appError.statusCode
+      );
     }
   }
 
@@ -255,9 +324,61 @@ export class AIService {
       ], { maxTokens: 10 });
       return !!response.content;
     } catch (error) {
-      console.error('连接测试失败:', error);
+      logger.error('[AI] 连接测试失败', error);
       return false;
     }
+  }
+
+  /**
+   * 记录 Token 使用
+   */
+  private recordTokenUsage(usage: { promptTokens: number; completionTokens: number; totalTokens: number }): void {
+    try {
+      const cost = this.calculateCost(usage.promptTokens, usage.completionTokens);
+
+      this.tokenUsageRepo.record({
+        provider: this.config.name,
+        model: this.config.model,
+        prompt_tokens: usage.promptTokens,
+        completion_tokens: usage.completionTokens,
+        total_tokens: usage.totalTokens,
+        cost,
+      });
+
+      logger.debug('[AI] Token 使用记录', {
+        provider: this.config.name,
+        model: this.config.model,
+        tokens: usage.totalTokens,
+        cost: `¥${cost.toFixed(4)}`,
+      });
+    } catch (error) {
+      logger.error('[AI] 记录 Token 使用失败', error);
+    }
+  }
+
+  /**
+   * 计算成本
+   */
+  private calculateCost(promptTokens: number, completionTokens: number): number {
+    const price = AIService.MODEL_PRICES[this.config.model];
+    if (!price) {
+      return 0; // 未知模型不计费
+    }
+
+    const promptCost = (promptTokens / 1000) * price.input;
+    const completionCost = (completionTokens / 1000) * price.output;
+    return promptCost + completionCost;
+  }
+
+  /**
+   * 获取 Token 使用统计
+   */
+  getTokenUsage(userId?: string, days?: number) {
+    return {
+      total: this.tokenUsageRepo.getTotalSummary(userId, days),
+      byProvider: this.tokenUsageRepo.getSummaryByProvider(userId, days),
+      recent: this.tokenUsageRepo.getRecentRecords(10, userId),
+    };
   }
 
   /**

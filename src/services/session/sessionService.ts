@@ -4,6 +4,8 @@
  */
 
 import { SessionRepository, ConversationMessage } from '../../database/repositories';
+import { AIService } from '../ai';
+import { logger } from '../../utils/logger';
 
 export interface SessionData {
   id: string;
@@ -13,6 +15,8 @@ export interface SessionData {
   hasPendingChallenge: boolean;
   hasPendingDecisionReview: boolean;
   pendingDecisionId: string | null;
+  summary?: string | null;  // 会话摘要
+  summaryUpdatedAt?: number;  // 摘要更新时间戳
 }
 
 /**
@@ -21,9 +25,12 @@ export interface SessionData {
 export class SessionService {
   private repository: SessionRepository;
   private cache: Map<string, SessionData> = new Map();
+  private aiService: AIService;
+  private autoSummaryThreshold: number = 10;  // 多少条对话后触发自动摘要
 
   constructor() {
     this.repository = new SessionRepository();
+    this.aiService = new AIService();
   }
 
   /**
@@ -110,6 +117,79 @@ export class SessionService {
       if (cached.conversationHistory.length > 10) {
         cached.conversationHistory.shift();
       }
+    }
+
+    // 检查是否需要生成摘要
+    this.maybeGenerateSummary(userId, session.id);
+  }
+
+  /**
+   * 检查并生成会话摘要（防止上下文漂移）
+   */
+  private async maybeGenerateSummary(userId: string, sessionId: string): Promise<void> {
+    const cached = this.cache.get(userId);
+    if (!cached) return;
+
+    const history = cached.conversationHistory;
+    if (history.length === 0) return;
+
+    // 检查是否达到摘要阈值
+    if (history.length >= this.autoSummaryThreshold) {
+      // 如果还没有摘要或者距离上次摘要已经新增了很多对话
+      const lastSummaryAt = cached?.summaryUpdatedAt || 0;
+      const messagesSinceSummary = history.filter(msg => {
+        const msgTime = new Date(msg.content).getTime() || Date.now();
+        return msgTime > lastSummaryAt;
+      }).length;
+
+      if (messagesSinceSummary >= this.autoSummaryThreshold || !cached?.summary) {
+        await this.generateSummary(userId, sessionId, history);
+      }
+    }
+  }
+
+  /**
+   * 生成会话摘要
+   */
+  private async generateSummary(
+    userId: string,
+    sessionId: string,
+    history: ConversationMessage[]
+  ): Promise<void> {
+    try {
+      const recentHistory = history.slice(-20); // 只取最近 20 条
+      const historyText = recentHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+
+      const prompt = `请为以下对话生成简洁的摘要（100 字以内），包括：
+1. 用户的核心关注点
+2. 已讨论的关键内容
+3. 待继续的话题
+
+对话历史：
+${historyText}
+
+请直接输出摘要内容，不要有多余解释。`;
+
+      const response = await this.aiService.chat([
+        { role: 'user', content: prompt },
+      ], {
+        maxTokens: 150,
+        temperature: 0.1,
+      });
+
+      // 更新会话摘要
+      this.update(userId, {
+        summary: response.content,
+        summaryUpdatedAt: Date.now(),
+      } as any);
+
+      logger.info('[SessionService] 生成会话摘要', {
+        userId,
+        sessionId,
+        summaryLength: response.content.length,
+      });
+    } catch (error) {
+      logger.error('[SessionService] 生成会话摘要失败', error);
     }
   }
 

@@ -5,6 +5,7 @@
 
 import { PortraitRepository } from '../../database/repositories';
 import type { AbilityChange, DecisionRecord, CognitionUpgrade } from '../../types';
+import { logger } from '../../utils/logger';
 
 export interface PortraitSummary {
   industry: string | null;
@@ -114,7 +115,7 @@ export class PortraitService {
       };
       return this.cache;
     } catch (error) {
-      console.error('[PortraitService] 解析画像数据失败:', error);
+      logger.error('[PortraitService] 解析画像数据失败', error);
       return createDefaultPortraitData();
     }
   }

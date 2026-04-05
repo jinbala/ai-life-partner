@@ -9,6 +9,8 @@ import { UserRepository } from '../../database/repositories';
 import { FeishuMessageService } from '../../integrations/feishu';
 import { GoalService } from '../../services/user/goalService';
 import { logger } from '../../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * 定时任务服务
@@ -18,10 +20,18 @@ export class SchedulerService {
   private messageService: FeishuMessageService;
   private morningPushJob: ScheduledTask | null = null;
   private reviewReminderJob: ScheduledTask | null = null;
+  private databaseBackupJob: ScheduledTask | null = null;
+  private backupDir: string;
 
   constructor() {
     this.userRepository = new UserRepository();
     this.messageService = new FeishuMessageService();
+    this.backupDir = path.join(process.cwd(), 'data', 'backups');
+
+    // 确保备份目录存在
+    if (!fs.existsSync(this.backupDir)) {
+      fs.mkdirSync(this.backupDir, { recursive: true });
+    }
   }
 
   /**
@@ -46,6 +56,15 @@ export class SchedulerService {
       timezone: 'Asia/Shanghai',
     });
 
+    // 每天凌晨 3:00 备份数据库
+    this.databaseBackupJob = cron.schedule('0 3 * * *', () => {
+      this.backupDatabase().catch(err => {
+        logger.error('[Scheduler] 数据库备份失败', err);
+      });
+    }, {
+      timezone: 'Asia/Shanghai',
+    });
+
     logger.info('[Scheduler] 定时任务已启动');
   }
 
@@ -60,6 +79,10 @@ export class SchedulerService {
     if (this.reviewReminderJob) {
       this.reviewReminderJob.stop();
       this.reviewReminderJob = null;
+    }
+    if (this.databaseBackupJob) {
+      this.databaseBackupJob.stop();
+      this.databaseBackupJob = null;
     }
     logger.info('[Scheduler] 定时任务已停止');
   }
@@ -134,5 +157,74 @@ export class SchedulerService {
     }
 
     logger.info('[ReviewReminder] 提醒完成', { total: users.length });
+  }
+
+  /**
+   * 备份数据库
+   */
+  private async backupDatabase(): Promise<void> {
+    logger.info('[DatabaseBackup] 开始备份数据库...');
+
+    try {
+      const dbPath = path.join(process.cwd(), 'data', 'app.db');
+
+      if (!fs.existsSync(dbPath)) {
+        logger.warn('[DatabaseBackup] 数据库文件不存在，跳过备份');
+        return;
+      }
+
+      // 生成备份文件名（带日期）
+      const date = new Date();
+      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      const timestamp = date.getTime();
+      const backupFileName = `app_backup_${dateStr}_${timestamp}.db`;
+      const backupPath = path.join(this.backupDir, backupFileName);
+
+      // 复制数据库文件
+      fs.copyFileSync(dbPath, backupPath);
+
+      // 清理 7 天前的旧备份
+      this.cleanupOldBackups(7);
+
+      const stats = fs.statSync(backupPath);
+      logger.info('[DatabaseBackup] 备份完成', {
+        backupPath,
+        size: (stats.size / 1024).toFixed(2) + ' KB',
+      });
+    } catch (error) {
+      logger.error('[DatabaseBackup] 备份失败', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 清理过期备份
+   */
+  private cleanupOldBackups(keepDays: number): void {
+    try {
+      const cutoffTime = Date.now() - (keepDays * 24 * 60 * 60 * 1000);
+      const files = fs.readdirSync(this.backupDir);
+
+      let deletedCount = 0;
+      for (const file of files) {
+        if (!file.startsWith('app_backup_') || !file.endsWith('.db')) {
+          continue;
+        }
+
+        const filePath = path.join(this.backupDir, file);
+        const stats = fs.statSync(filePath);
+
+        if (stats.mtimeMs < cutoffTime) {
+          fs.unlinkSync(filePath);
+          deletedCount++;
+        }
+      }
+
+      if (deletedCount > 0) {
+        logger.info('[DatabaseBackup] 清理过期备份', { deleted: deletedCount });
+      }
+    } catch (error) {
+      logger.error('[DatabaseBackup] 清理过期备份失败', error);
+    }
   }
 }

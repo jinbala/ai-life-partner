@@ -215,9 +215,28 @@ export function initializeDatabase(): void {
       has_pending_challenge INTEGER DEFAULT 0,
       has_pending_decision_review INTEGER DEFAULT 0,
       pending_decision_id TEXT,
+      summary TEXT,
+      summary_updated_at TEXT,
       last_active_at TEXT DEFAULT (datetime('now')),
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Token 使用记录表
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      prompt_tokens INTEGER DEFAULT 0,
+      completion_tokens INTEGER DEFAULT 0,
+      total_tokens INTEGER DEFAULT 0,
+      endpoint TEXT,
+      cost REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
 
@@ -230,6 +249,8 @@ export function initializeDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_decisions_user ON decisions(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_challenges_user ON challenges(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_user ON token_usage(user_id);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_date ON token_usage(created_at);
   `);
 
   logger.info('[Database] 数据库表结构已初始化');

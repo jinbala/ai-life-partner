@@ -1,5 +1,6 @@
 import * as lark from '@larksuiteoapi/node-sdk';
 import dotenv from 'dotenv';
+import { logger } from '../../utils/logger';
 
 dotenv.config();
 
@@ -38,7 +39,7 @@ export class FeishuMessageService {
 
       return true;
     } catch (error) {
-      console.error('发送飞书消息失败:', error);
+      logger.error('[Feishu] 发送消息失败', error);
       return false;
     }
   }
@@ -101,7 +102,7 @@ export class FeishuMessageService {
 
       return true;
     } catch (error) {
-      console.error('发送交互式消息失败:', error);
+      logger.error('[Feishu] 发送交互式消息失败', error);
       return false;
     }
   }
@@ -127,7 +128,7 @@ export class FeishuMessageService {
         chatType: message.chat_type as 'p2p' | 'group',
       };
     } catch (error) {
-      console.error('解析消息失败:', error);
+      logger.error('[Feishu] 解析消息失败', error);
       return null;
     }
   }

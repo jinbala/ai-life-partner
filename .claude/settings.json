@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cmd //c \"taskkill /F /PID 43188\")"
+      "Bash(cmd //c \"taskkill /F /PID 43188\")",
+      "Bash(git commit -m 'docs: 添加完整架构设计文档:*)",
+      "Bash(npm test:*)"
     ]
   }
 }

@@ -20,6 +20,7 @@ import { SessionService } from './services/session';
 import { SchedulerService } from './services/scheduler';
 import { WebSocketService } from './services/websocket';
 import { FeishuMessageService } from './integrations/feishu';
+import { DataExportService } from './services/export';
 
 // 中间件
 import { requestLogger, requestId } from './api/middleware';
@@ -69,6 +70,7 @@ const sessionService = new SessionService();
 const feishuMessageService = new FeishuMessageService();
 const schedulerService = new SchedulerService();
 const wsService = new WebSocketService();
+const dataExportService = new DataExportService();
 
 // 验证 AI 配置
 const aiConfigCheck = validateAiConfig(config);
@@ -84,6 +86,51 @@ app.post('/test-ai', async (req: Request, res: Response) => {
     res.json({ success: true, response });
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// 数据导出 API
+app.get('/api/export/user/:userId', async (req: Request, res: Response) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+  const { format } = req.query as { format?: string };
+
+  try {
+    const data = dataExportService.exportUserData(userId);
+
+    if (format === 'file') {
+      const filePath = `data/exports/export_${userId}_${Date.now()}.json`;
+      dataExportService.exportToFile(userId, filePath);
+      res.json({ success: true, filePath });
+    } else {
+      res.json({ success: true, data });
+    }
+  } catch (error) {
+    logger.error('[Server] 导出失败', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Token 使用统计 API
+app.get('/api/token-usage', async (req: Request, res: Response) => {
+  const query = req.query as Record<string, string>;
+  const userIdParam = query.userId;
+  const daysParam = query.days;
+
+  try {
+    const stats = aiService.getTokenUsage(
+      userIdParam || undefined,
+      daysParam && !isNaN(parseInt(daysParam)) ? parseInt(daysParam) : undefined
+    );
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    logger.error('[Server] 获取 Token 统计失败', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 
@@ -474,9 +521,12 @@ app.post('/feishu/event', async (req: Request, res: Response) => {
 
 // 启动服务器
 server.listen(PORT, () => {
-  logger.info('[Server] 服务已启动', {
+  logger.info('[Server] 服务启动信息', {
     port: PORT,
-    env: config.NODE_ENV,
+    model: aiService.getModelInfo(),
+    health: `GET http://localhost:${PORT}/health`,
+    testAi: `POST http://localhost:${PORT}/test-ai`,
+    chat: `http://localhost:${PORT}/chat`,
   });
 
   console.log(`🤖 AI 人生合伙人服务已启动，端口：${PORT}`);
