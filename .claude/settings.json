@@ -3,7 +3,9 @@
     "allow": [
       "Bash(cmd //c \"taskkill /F /PID 43188\")",
       "Bash(git commit -m 'docs: 添加完整架构设计文档:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(curl -I https://github.com)"
     ]
   }
 }

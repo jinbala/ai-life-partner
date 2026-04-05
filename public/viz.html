@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据中心 - AI 人生合伙人</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .dashboard {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+    }
+
+    .nav-links {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      margin: 0 15px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.2);
+      transition: background 0.3s;
+    }
+
+    .nav-links a:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-label {
+      color: #666;
+      margin-top: 5px;
+      font-size: 0.9rem;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .chart-card {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .chart-card h3 {
+      margin-bottom: 20px;
+      color: #333;
+      font-size: 1.2rem;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 300px;
+    }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .goal-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .goal-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .goal-item:last-child {
+      border-bottom: none;
+    }
+
+    .goal-info {
+      flex: 1;
+      margin-right: 20px;
+    }
+
+    .goal-description {
+      font-weight: 500;
+      margin-bottom: 5px;
+    }
+
+    .goal-bar {
+      height: 8px;
+      background: #e9ecef;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .goal-progress {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s;
+    }
+
+    .goal-percentage {
+      font-size: 0.85rem;
+      color: #666;
+      min-width: 50px;
+      text-align: right;
+    }
+
+    .level-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-right: 8px;
+    }
+
+    .level-north_star { background: #FFD700; color: #000; }
+    .level-annual { background: #FF6384; color: #fff; }
+    .level-monthly { background: #36A2EB; color: #fff; }
+    .level-weekly { background: #4BC0C0; color: #fff; }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .error {
+      text-align: center;
+      padding: 40px;
+      color: #dc3545;
+    }
+
+    @media (max-width: 768px) {
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="header">
+      <h1>📊 数据中心</h1>
+      <p>你的成长可视化面板</p>
+    </div>
+
+    <div class="nav-links">
+      <a href="/chat">💬 聊天</a>
+      <a href="/viz">📊 数据中心</a>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="loading">加载中...</div>
+    </div>
+
+    <!-- 图表区域 -->
+    <div class="charts-grid">
+      <!-- 能力雷达图 -->
+      <div class="chart-card">
+        <h3>🎯 能力雷达图</h3>
+        <div class="chart-container">
+          <canvas id="radarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 能力成长曲线 -->
+      <div class="chart-card">
+        <h3>📈 能力成长曲线</h3>
+        <div class="chart-container">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 目标进度 -->
+      <div class="chart-card full-width">
+        <h3>🏆 目标进度</h3>
+        <div class="goal-list" id="goalList">
+          <div class="loading">加载中...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 获取用户 ID
+    function getUserId() {
+      let userId = localStorage.getItem('ai_partner_user_id');
+      if (!userId) {
+        userId = 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('ai_partner_user_id', userId);
+      }
+      return userId;
+    }
+
+    // 全局图表实例
+    let radarChartInstance = null;
+    let trendChartInstance = null;
+
+    // 加载综合统计数据
+    async function loadDashboard() {
+      const userId = getUserId();
+      try {
+        const response = await fetch(`/api/viz/dashboard?userId=${userId}`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderStats(result.data);
+          renderRadarChart(result.data.abilities?.radar);
+          renderGoalProgress();
+          renderTrendChart();
+        } else {
+          showError('加载数据失败');
+        }
+      } catch (error) {
+        console.error('加载数据失败:', error);
+        showError('网络错误，请稍后重试');
+      }
+    }
+
+    // 渲染统计卡片
+    function renderStats(data) {
+      const statsGrid = document.getElementById('statsGrid');
+      const overview = data.overview;
+      const abilities = data.abilities;
+      const growth = data.growth;
+      const tokenUsage = data.tokenUsage;
+
+      statsGrid.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-value">${overview.totalGoals}</div>
+          <div class="stat-label">目标总数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${overview.completedTasks}/${overview.todayTasks}</div>
+          <div class="stat-label">今日任务</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${abilities?.avgScore?.toFixed(1) || '5.0'}</div>
+          <div class="stat-label">平均能力分</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${growth.totalDecisions}</div>
+          <div class="stat-label">决策记录</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${growth.totalCognitionUpgrades}</div>
+          <div class="stat-label">认知升级</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">¥${tokenUsage.estimated_cost.toFixed(2)}</div>
+          <div class="stat-label">7 日 AI 成本</div>
+        </div>
+      `;
+    }
+
+    // 渲染能力雷达图
+    function renderRadarChart(radarData) {
+      const ctx = document.getElementById('radarChart').getContext('2d');
+
+      if (radarChartInstance) {
+        radarChartInstance.destroy();
+      }
+
+      radarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: radarData?.labels || ['商业判断力', '执行力', '认知水平', '风险控制', '学习能力'],
+          datasets: [{
+            label: '当前能力',
+            data: radarData?.values || [5, 5, 5, 5, 5],
+            backgroundColor: 'rgba(102, 126, 234, 0.2)',
+            borderColor: 'rgba(102, 126, 234, 1)',
+            pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+            pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: 'rgba(102, 126, 234, 1)',
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            r: {
+              angleLines: { color: 'rgba(0, 0, 0, 0.1)' },
+              grid: { color: 'rgba(0, 0, 0, 0.1)' },
+              pointLabels: {
+                font: { size: 12 },
+                color: '#333',
+              },
+              ticks: {
+                stepSize: 2,
+                backdropColor: 'transparent',
+                color: '#666',
+              },
+              suggestedMin: 0,
+              suggestedMax: 10,
+            },
+          },
+          plugins: {
+            legend: { display: false },
+          },
+        },
+      });
+    }
+
+    // 渲染能力成长曲线
+    async function renderTrendChart() {
+      const userId = getUserId();
+      try {
+        const response = await fetch(`/api/viz/ability-trend?userId=${userId}&days=90`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderTrendChartWithData(result.data);
+        }
+      } catch (error) {
+        console.error('加载成长曲线失败:', error);
+      }
+    }
+
+    function renderTrendChartWithData(data) {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+
+      if (trendChartInstance) {
+        trendChartInstance.destroy();
+      }
+
+      // 如果数据为空，显示空图表
+      if (!data.labels || data.labels.length === 0) {
+        trendChartInstance = new Chart(ctx, {
+          type: 'line',
+          data: { labels: ['暂无数据'], datasets: [] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+          },
+        });
+        return;
+      }
+
+      trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: data.datasets.map(ds => ({
+            label: ds.label,
+            data: ds.data,
+            borderColor: ds.borderColor,
+            backgroundColor: ds.borderColor.replace('1)', '0.1)'),
+            borderWidth: 2,
+            tension: 0.3,
+            fill: false,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          })),
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              grid: { color: 'rgba(0, 0, 0, 0.05)' },
+              ticks: {
+                maxRotation: 45,
+                minRotation: 45,
+                font: { size: 10 },
+              },
+            },
+            y: {
+              min: 0,
+              max: 10,
+              grid: { color: 'rgba(0, 0, 0, 0.1)' },
+              ticks: { stepSize: 2 },
+            },
+          },
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: { boxWidth: 12, padding: 10 },
+            },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+            },
+          },
+        },
+      });
+    }
+
+    // 渲染目标进度
+    async function renderGoalProgress() {
+      const userId = getUserId();
+      try {
+        const response = await fetch(`/api/viz/goal-progress?userId=${userId}`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderGoalList(result.data);
+        }
+      } catch (error) {
+        console.error('加载目标进度失败:', error);
+        document.getElementById('goalList').innerHTML = '<div class="error">加载失败</div>';
+      }
+    }
+
+    function renderGoalList(data) {
+      const goalList = document.getElementById('goalList');
+      let html = '';
+
+      // 今日任务
+      if (data.todayTasks.total > 0) {
+        html += `
+          <div class="goal-item">
+            <div class="goal-info">
+              <div class="goal-description">
+                <span class="level-badge level-weekly">今日</span>
+                任务完成
+              </div>
+              <div class="goal-bar">
+                <div class="goal-progress" style="width: ${data.todayTasks.progress}%"></div>
+              </div>
+            </div>
+            <div class="goal-percentage">${data.todayTasks.completed}/${data.todayTasks.total}</div>
+          </div>
+        `;
+      }
+
+      // 周目标
+      if (data.weekly.length > 0) {
+        data.weekly.forEach(goal => {
+          html += createGoalItem(goal, '周目标');
+        });
+      }
+
+      // 月目标
+      if (data.monthly.length > 0) {
+        data.monthly.forEach(goal => {
+          html += createGoalItem(goal, '月目标');
+        });
+      }
+
+      // 年目标
+      if (data.annual.length > 0) {
+        data.annual.forEach(goal => {
+          html += createGoalItem(goal, '年目标');
+        });
+      }
+
+      // 北极星目标
+      if (data.northStar) {
+        html += createGoalItem(data.northStar, '北极星');
+      }
+
+      if (html === '') {
+        html = '<div class="loading">暂无目标数据</div>';
+      }
+
+      goalList.innerHTML = html;
+    }
+
+    function createGoalItem(goal, levelName) {
+      const levelClass = levelName === '北极星' ? 'north_star' :
+                        levelName === '年目标' ? 'annual' :
+                        levelName === '月目标' ? 'monthly' : 'weekly';
+
+      return `
+        <div class="goal-item">
+          <div class="goal-info">
+            <div class="goal-description">
+              <span class="level-badge level-${levelClass}">${levelName}</span>
+              ${goal.description}
+            </div>
+            <div class="goal-bar">
+              <div class="goal-progress" style="width: ${goal.progress}%"></div>
+            </div>
+          </div>
+          <div class="goal-percentage">${goal.progress}%</div>
+        </div>
+      `;
+    }
+
+    // 显示错误
+    function showError(message) {
+      document.getElementById('statsGrid').innerHTML = `
+        <div class="error" style="grid-column: 1 / -1;">${message}</div>
+      `;
+    }
+
+    // 页面加载
+    document.addEventListener('DOMContentLoaded', loadDashboard);
+  </script>
+</body>
+</html>

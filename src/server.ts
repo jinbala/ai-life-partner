@@ -24,7 +24,7 @@ import { DataExportService } from './services/export';
 
 // 中间件
 import { requestLogger, requestId } from './api/middleware';
-import { healthRoutes, chatRoutes, feishuRoutes } from './api/routes';
+import { healthRoutes, chatRoutes, feishuRoutes, visualizationRoutes } from './api/routes';
 
 // 工具
 import { logger, setLogFile, cleanupOldLogs } from './utils/logger';
@@ -59,10 +59,16 @@ app.get('/chat', (req: Request, res: Response) => {
   res.sendFile('index.html', { root: 'public' });
 });
 
+// 数据中心页面路由
+app.get('/viz', (req: Request, res: Response) => {
+  res.sendFile('viz.html', { root: 'public' });
+});
+
 // API 路由
 app.use('/health', healthRoutes);
 app.use('/chat/api', chatRoutes);
 app.use('/feishu', feishuRoutes);
+app.use('/api/viz', visualizationRoutes);
 
 // 初始化服务
 const aiService = new AIService();
