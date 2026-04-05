@@ -245,7 +245,7 @@
   </div>
 
   <script>
-    // 获取用户 ID
+    // 获取或创建用户 ID
     function getUserId() {
       let userId = localStorage.getItem('ai_partner_user_id');
       if (!userId) {
@@ -260,6 +260,28 @@
       return localStorage.getItem('ai_partner_token') || '';
     }
 
+    // 自动获取令牌（如果还没有）
+    async function ensureToken() {
+      if (!getToken()) {
+        try {
+          const userId = getUserId();
+          const response = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId }),
+          });
+          const result = await response.json();
+          if (result.success) {
+            localStorage.setItem('ai_partner_token', result.data.accessToken);
+            localStorage.setItem('ai_partner_refresh_token', result.data.refreshToken);
+            console.log('[Auth] 自动获取令牌成功');
+          }
+        } catch (error) {
+          console.error('[Auth] 自动获取令牌失败:', error);
+        }
+      }
+    }
+
     // 带认证的 fetch 封装
     async function fetchWithAuth(url, options = {}) {
       const token = getToken();
@@ -269,11 +291,12 @@
         ...(options.headers || {}),
       };
       const response = await fetch(url, { ...options, headers });
-      // 如果 401 未授权，尝试清除令牌并重定向
+      // 如果 401 未授权，尝试刷新令牌
       if (response.status === 401) {
         const data = await response.json().catch(() => ({}));
         if (data.error?.code === 'UNAUTHORIZED') {
-          console.warn('认证失败，请登录后重试');
+          console.warn('[Auth] 认证失败，尝试刷新令牌');
+          // 可以尝试刷新令牌或提示用户
         }
       }
       return response;
@@ -285,6 +308,8 @@
 
     // 加载综合统计数据
     async function loadDashboard() {
+      // 确保有令牌
+      await ensureToken();
       const userId = getUserId();
       try {
         const response = await fetchWithAuth(`/api/viz/dashboard`);
@@ -398,6 +423,7 @@
 
     // 加载能力成长曲线
     async function loadTrendChart() {
+      await ensureToken();
       try {
         const response = await fetchWithAuth(`/api/viz/ability-trend?days=90`);
         const result = await response.json();
@@ -493,6 +519,7 @@
 
     // 加载目标进度
     async function loadGoalProgress() {
+      await ensureToken();
       try {
         const response = await fetchWithAuth(`/api/viz/goal-progress`);
         const result = await response.json();
@@ -592,7 +619,11 @@
     }
 
     // 页面加载
-    document.addEventListener('DOMContentLoaded', loadDashboard);
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 页面加载时先获取令牌
+      await ensureToken();
+      loadDashboard();
+    });
   </script>
 </body>
 </html>

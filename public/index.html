@@ -297,9 +297,31 @@
       return userId;
     }
 
-    // 获取认证令牌（如果已登录）
+    // 获取认证令牌
     function getToken() {
       return localStorage.getItem('ai_partner_token') || '';
+    }
+
+    // 自动获取令牌（如果还没有）
+    async function ensureToken() {
+      if (!getToken()) {
+        try {
+          const userId = getUserId();
+          const response = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId }),
+          });
+          const result = await response.json();
+          if (result.success) {
+            localStorage.setItem('ai_partner_token', result.data.accessToken);
+            localStorage.setItem('ai_partner_refresh_token', result.data.refreshToken);
+            console.log('[Auth] 自动获取令牌成功');
+          }
+        } catch (error) {
+          console.error('[Auth] 自动获取令牌失败:', error);
+        }
+      }
     }
 
     // 生成会话 ID（本地存储）
@@ -408,6 +430,9 @@
         sendMessage();
       }
     });
+
+    // 页面加载时获取令牌
+    ensureToken();
 
     // 页面加载完成后聚焦输入框
     messageInput.focus();
