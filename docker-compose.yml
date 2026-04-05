@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  ai-life-partner:
+    build: .
+    container_name: ai-life-partner
+    ports:
+      - "3000:3000"
+    volumes:
+      # 持久化数据目录
+      - ./data:/app/data
+      # 持久化环境变量
+      - ./.env.docker:/app/.env
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
