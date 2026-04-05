@@ -256,7 +256,13 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     const todayTasks = taskRepo.findByDate(userId as string, today);
     const tokenStats = tokenUsageRepo.getTotalSummary(userId as string, 7);
 
-    const abilities = portrait?.abilities ? JSON.parse(portrait.abilities) : null;
+    const abilities = portrait?.abilities ? JSON.parse(portrait.abilities) : {
+      businessJudgment: 5,
+      execution: 5,
+      cognition: 5,
+      riskControl: 5,
+      learningAbility: 5,
+    };
     const growthTrack = portrait?.growth_track ? JSON.parse(portrait.growth_track) : null;
 
     const data = {
@@ -266,7 +272,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         completedTasks: todayTasks.filter(t => t.is_completed).length,
         decisionStyle: portrait?.decision_style || 'intuitive',
       },
-      abilities: abilities ? {
+      abilities: {
         radar: {
           labels: ['商业判断力', '执行力', '认知水平', '风险控制', '学习能力'],
           values: [
@@ -284,7 +290,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
           abilities.riskControl +
           abilities.learningAbility
         ) / 5,
-      } : null,
+      },
       growth: {
         totalDecisions: growthTrack?.decisionQuality?.length || 0,
         totalCognitionUpgrades: growthTrack?.cognitionUpgrades?.length || 0,

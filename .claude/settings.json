@@ -5,7 +5,19 @@
       "Bash(git commit -m 'docs: 添加完整架构设计文档:*)",
       "Bash(npm test:*)",
       "Bash(git commit -m ':*)",
-      "Bash(curl -I https://github.com)"
+      "Bash(curl -I https://github.com)",
+      "Read(//c/Users/14549/OneDrive/Desktop/pj/**)",
+      "Bash(curl -s http://localhost:3000/api/viz/ability-radar?userId=test123)",
+      "Bash(pkill -f \"node dist/server.js\")",
+      "Bash(curl -s http://localhost:3000/chat/api/message -X POST -H \"Content-Type: application/json\" -d '{\"userId\":\"test\",\"sessionId\":\"test\",\"message\":\"hi\"}')",
+      "Bash(curl -s \"http://localhost:3000/api/viz/dashboard?userId=test123\")",
+      "Bash(pm2 list:*)",
+      "Bash(taskkill /F /PID 16816)",
+      "Bash(taskkill /PID 16816 /F)",
+      "Bash(powershell -Command \"Stop-Process -Id 16816 -Force\")",
+      "Bash(curl -s \"http://localhost:3000/api/viz/ability-radar?userId=test123\")",
+      "Bash(powershell -Command \"Stop-Process -Name node -Force\")",
+      "Bash(curl -s http://localhost:3000/viz)"
     ]
   }
 }

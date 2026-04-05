@@ -269,8 +269,6 @@
         if (result.success) {
           renderStats(result.data);
           renderRadarChart(result.data.abilities?.radar);
-          renderGoalProgress();
-          renderTrendChart();
         } else {
           showError('加载数据失败');
         }
@@ -278,6 +276,10 @@
         console.error('加载数据失败:', error);
         showError('网络错误，请稍后重试');
       }
+
+      // 单独加载成长曲线和目标进度
+      loadTrendChart();
+      loadGoalProgress();
     }
 
     // 渲染统计卡片
@@ -324,13 +326,17 @@
         radarChartInstance.destroy();
       }
 
+      // 如果没有数据，显示默认值
+      const labels = radarData?.labels || ['商业判断力', '执行力', '认知水平', '风险控制', '学习能力'];
+      const values = radarData?.values || [5, 5, 5, 5, 5];
+
       radarChartInstance = new Chart(ctx, {
         type: 'radar',
         data: {
-          labels: radarData?.labels || ['商业判断力', '执行力', '认知水平', '风险控制', '学习能力'],
+          labels: labels,
           datasets: [{
             label: '当前能力',
-            data: radarData?.values || [5, 5, 5, 5, 5],
+            data: values,
             backgroundColor: 'rgba(102, 126, 234, 0.2)',
             borderColor: 'rgba(102, 126, 234, 1)',
             pointBackgroundColor: 'rgba(102, 126, 234, 1)',
@@ -366,8 +372,8 @@
       });
     }
 
-    // 渲染能力成长曲线
-    async function renderTrendChart() {
+    // 加载能力成长曲线
+    async function loadTrendChart() {
       const userId = getUserId();
       try {
         const response = await fetch(`/api/viz/ability-trend?userId=${userId}&days=90`);
@@ -375,10 +381,29 @@
 
         if (result.success) {
           renderTrendChartWithData(result.data);
+        } else {
+          renderEmptyTrendChart();
         }
       } catch (error) {
         console.error('加载成长曲线失败:', error);
+        renderEmptyTrendChart();
       }
+    }
+
+    function renderEmptyTrendChart() {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      if (trendChartInstance) {
+        trendChartInstance.destroy();
+      }
+      trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: ['暂无数据'], datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+        },
+      });
     }
 
     function renderTrendChartWithData(data) {
@@ -389,16 +414,8 @@
       }
 
       // 如果数据为空，显示空图表
-      if (!data.labels || data.labels.length === 0) {
-        trendChartInstance = new Chart(ctx, {
-          type: 'line',
-          data: { labels: ['暂无数据'], datasets: [] },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-          },
-        });
+      if (!data.labels || data.labels.length === 0 || !data.datasets || data.datasets.length === 0) {
+        renderEmptyTrendChart();
         return;
       }
 
@@ -451,8 +468,8 @@
       });
     }
 
-    // 渲染目标进度
-    async function renderGoalProgress() {
+    // 加载目标进度
+    async function loadGoalProgress() {
       const userId = getUserId();
       try {
         const response = await fetch(`/api/viz/goal-progress?userId=${userId}`);
@@ -460,6 +477,8 @@
 
         if (result.success) {
           renderGoalList(result.data);
+        } else {
+          document.getElementById('goalList').innerHTML = '<div class="loading">暂无目标数据</div>';
         }
       } catch (error) {
         console.error('加载目标进度失败:', error);
