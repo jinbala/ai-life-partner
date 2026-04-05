@@ -17,7 +17,19 @@
       "Bash(powershell -Command \"Stop-Process -Id 16816 -Force\")",
       "Bash(curl -s \"http://localhost:3000/api/viz/ability-radar?userId=test123\")",
       "Bash(powershell -Command \"Stop-Process -Name node -Force\")",
-      "Bash(curl -s http://localhost:3000/viz)"
+      "Bash(curl -s http://localhost:3000/viz)",
+      "Bash(curl -s -X POST http://localhost:3000/chat/api/message -H 'Content-Type: application/json' -d '{\"userId\":\"test_user\",\"sessionId\":\"test_session_123\",\"message\":\"你好，我是测试用户\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/chat/api/message -H 'Content-Type: application/json' -d '{\"userId\":\"test_user\",\"sessionId\":\"test_session_123\",\"message\":\"我刚才说了什么？\"}')",
+      "Bash(curl -s http://localhost:3000/chat/api/session/test_session_123)",
+      "Bash(curl -s -X POST http://localhost:3000/chat/api/message -H 'Content-Type: application/json; charset=utf-8' -d '{\"userId\":\"test_user\",\"sessionId\":\"test_session_456\",\"message\":\"你好，我是张三\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/chat/api/message -H 'Content-Type: application/json; charset=utf-8' -d '{\"userId\":\"test_user\",\"sessionId\":\"test_session_456\",\"message\":\"我叫什么名字？\"}')",
+      "Bash(curl -s http://localhost:3000/chat/api/session/test_session_456)",
+      "Bash(curl -s -X POST http://localhost:3000/chat/api/message -H 'Content-Type: application/json' -d @test_memory.json)",
+      "Bash(curl -s -X POST http://localhost:3000/chat/api/message -H 'Content-Type: application/json' -d @test_memory2.json)",
+      "Bash(curl -s http://localhost:3000/chat/api/session/sess_persistent_001)",
+      "Bash(curl -s http://localhost:3000/chat/api/session/sess_db_001)",
+      "Bash(sqlite3 data/app.db \"SELECT id, user_id, conversation_history FROM sessions WHERE id = 'sess_db_001';\")",
+      "Bash(node check_db.js)"
     ]
   }
 }
