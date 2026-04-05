@@ -10,14 +10,17 @@ RUN apk add --no-cache python3 make g++
 # 复制 package 文件
 COPY package*.json ./
 
-# 安装依赖
-RUN npm ci --only=production
+# 安装所有依赖（包括 devDependencies 用于编译 TypeScript）
+RUN npm ci
 
 # 复制源代码
 COPY . .
 
 # 编译 TypeScript
 RUN npm run build
+
+# 切换到 production 依赖（可选，减小镜像大小）
+# RUN npm ci --only=production && npm cache clean --force
 
 # 暴露端口
 EXPOSE 3000
