@@ -5,6 +5,8 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../../utils/logger';
+import { getDatabase } from '../../database';
+import { jwtService, JwtTokenPayload } from '../../services/jwt';
 
 /**
  * 认证令牌接口
@@ -91,12 +93,13 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
 
 /**
  * 会话认证中间件
- * 验证会话令牌
+ * 验证 JWT 令牌
  */
 export function sessionAuth(req: Request, res: Response, next: NextFunction) {
-  const sessionToken = req.headers['authorization']?.replace('Bearer ', '');
+  const authHeader = req.headers['authorization'];
+  const token = authHeader?.replace('Bearer ', '');
 
-  if (!sessionToken) {
+  if (!token) {
     res.status(401).json({
       success: false,
       error: {
@@ -107,74 +110,188 @@ export function sessionAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  try {
-    // 此处可以添加 JWT 验证逻辑
-    // 目前简化处理：任何非空令牌都视为有效
-    req.auth = {
-      userId: sessionToken,
-      type: 'session',
-      issuedAt: Date.now(),
-    };
+  const payload = jwtService.verifyToken(token);
 
-    req.userId = sessionToken;
-    next();
-  } catch (error) {
-    logger.error('[Auth] 会话验证失败', error as Error);
+  if (!payload) {
+    logger.warn('[Auth] JWT 验证失败', {
+      ip: req.ip,
+      hasToken: !!token,
+    });
+
     res.status(401).json({
       success: false,
       error: {
         code: 'UNAUTHORIZED',
-        message: '无效的会话令牌',
+        message: '无效或已过期的令牌',
       },
     });
+    return;
   }
+
+  // 认证成功
+  req.auth = {
+    userId: payload.userId,
+    type: 'jwt',
+    issuedAt: payload.issuedAt,
+    expiresAt: payload.expiresAt,
+  };
+
+  req.userId = payload.userId;
+  next();
 }
 
 /**
- * 速率限制器（简化版）
- * 基于 IP 的简单速率限制
+ * JWT 令牌刷新端点
  */
+export function refreshToken(req: Request, res: Response) {
+  const { refreshToken: refreshTok } = req.body || {};
+
+  if (!refreshTok) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'BAD_REQUEST',
+        message: '缺少刷新令牌',
+      },
+    });
+    return;
+  }
+
+  const result = jwtService.refreshAccessToken(refreshTok);
+
+  if (!result) {
+    res.status(401).json({
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: '无效的刷新令牌',
+      },
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      accessToken: result.accessToken,
+    },
+  });
+}
+
+/**
+ * 速率限制器（数据库存储版本）
+ * 使用 better-sqlite3 进行持久化存储
+ */
+const rateLimitOptions = {
+  windowMs: 60 * 1000, // 默认 1 分钟
+  maxRequests: 100, // 默认 100 次/分钟
+};
+
+// 初始化速率限制表
+function initRateLimitTable() {
+  try {
+    const db = getDatabase();
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS rate_limits (
+        identifier TEXT PRIMARY KEY,
+        count INTEGER DEFAULT 0,
+        reset_at INTEGER NOT NULL
+      )
+    `);
+  } catch (error) {
+    // 如果数据库不可用，回退到内存存储
+    logger.debug('[RateLimit] 数据库初始化失败，使用内存存储');
+  }
+}
+
+// 内存回退存储
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
 export function rateLimit(options?: {
   windowMs?: number;
   maxRequests?: number;
+  keyGenerator?: (req: Request) => string;
 }) {
-  const windowMs = options?.windowMs || 60 * 1000; // 默认 1 分钟
-  const maxRequests = options?.maxRequests || 100; // 默认 100 次/分钟
+  const windowMs = options?.windowMs || rateLimitOptions.windowMs;
+  const maxRequests = options?.maxRequests || rateLimitOptions.maxRequests;
+  const keyGenerator = options?.keyGenerator || ((req) => req.ip || 'unknown');
+
+  // 尝试初始化数据库表
+  initRateLimitTable();
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || 'unknown';
+    const identifier = keyGenerator(req);
     const now = Date.now();
+    const resetAt = now + windowMs;
 
-    let record = rateLimitStore.get(ip);
+    let useDatabase = false;
+    let record: { count: number; resetAt: number } | null = null;
 
-    // 如果没有记录或窗口已过期，创建新记录
-    if (!record || now > record.resetAt) {
-      record = { count: 0, resetAt: now + windowMs };
-      rateLimitStore.set(ip, record);
+    // 尝试使用数据库存储
+    try {
+      const db = getDatabase();
+      useDatabase = true;
+
+      // 获取或创建记录
+      const row = db.prepare('SELECT count, reset_at FROM rate_limits WHERE identifier = ?').get(identifier) as { count: number; reset_at: number } | undefined;
+
+      if (row) {
+        record = { count: row.count, resetAt: row.reset_at };
+      }
+
+      // 如果窗口已过期，重置计数
+      if (!record || now > record.resetAt) {
+        record = { count: 0, resetAt };
+        db.prepare('INSERT OR REPLACE INTO rate_limits (identifier, count, reset_at) VALUES (?, ?, ?)').run(identifier, 0, resetAt);
+      }
+    } catch (error) {
+      // 数据库不可用，回退到内存存储
+      useDatabase = false;
+      let memRecord = rateLimitStore.get(identifier);
+      if (!memRecord || now > memRecord.resetAt) {
+        memRecord = { count: 0, resetAt };
+        rateLimitStore.set(identifier, memRecord);
+      }
+      record = memRecord;
     }
 
-    record.count++;
+    // 增加计数
+    record!.count++;
+
+    // 更新存储
+    try {
+      if (useDatabase) {
+        const db = getDatabase();
+        db.prepare('UPDATE rate_limits SET count = ? WHERE identifier = ?').run(record!.count, identifier);
+      }
+    } catch (error) {
+      // 忽略更新失败，继续使用内存中的计数
+    }
 
     // 检查是否超出限制
-    if (record.count > maxRequests) {
-      logger.warn('[Auth] 速率限制触发', {
-        ip,
-        count: record.count,
+    if (record!.count > maxRequests) {
+      logger.warn('[RateLimit] 速率限制触发', {
+        identifier,
+        count: record!.count,
         limit: maxRequests,
+        storage: useDatabase ? 'database' : 'memory',
       });
 
-      res.setHeader('Retry-After', Math.ceil((record.resetAt - now) / 1000));
+      res.setHeader('Retry-After', Math.ceil((record!.resetAt - now) / 1000));
       res.status(429).json({
         success: false,
         error: {
           code: 'RATE_LIMIT_EXCEEDED',
-          message: `请求过于频繁，请稍后再试（限制：${maxRequests} 次/分钟）`,
+          message: `请求过于频繁，请稍后再试（限制：${maxRequests} 次/${Math.floor(windowMs / 1000)}秒）`,
         },
       });
       return;
     }
+
+    // 添加响应头显示当前限制状态
+    res.setHeader('X-RateLimit-Limit', maxRequests.toString());
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - record!.count).toString());
+    res.setHeader('X-RateLimit-Reset', Math.ceil(record!.resetAt / 1000).toString());
 
     next();
   };

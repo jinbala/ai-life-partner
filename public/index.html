@@ -297,6 +297,16 @@
       return userId;
     }
 
+    // 生成会话 ID（本地存储）
+    function getSessionId() {
+      let sessionId = localStorage.getItem('ai_partner_session_id');
+      if (!sessionId) {
+        sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('ai_partner_session_id', sessionId);
+      }
+      return sessionId;
+    }
+
     // 添加消息到聊天
     function addMessage(content, isUser) {
       const messageDiv = document.createElement('div');
@@ -353,22 +363,26 @@
       showTypingIndicator();
 
       try {
-        // 如果是命令，直接发送到 test-ai 接口
-        const response = await fetch('/test-ai', {
+        // 发送到聊天 API
+        const response = await fetch('/chat/api/message', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({
+            userId: getUserId(),
+            sessionId: getSessionId(),
+            message: message,
+          }),
         });
 
         const data = await response.json();
         removeTypingIndicator();
 
         if (data.success) {
-          addMessage(data.response, false);
+          addMessage(data.data.message, false);
         } else {
-          addMessage(`错误：${data.error}`, false);
+          addMessage(`错误：${data.error?.message || data.error}`, false);
         }
       } catch (error) {
         removeTypingIndicator();

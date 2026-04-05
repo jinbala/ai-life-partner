@@ -8,6 +8,7 @@ import { AIService, ChatMessage } from '../../services/ai';
 import { generateSystemPrompt } from '../../services/ai/aiPersona';
 import { sessionManager } from '../../context/sessionManager';
 import { logger } from '../../utils/logger';
+import { validate, ChatMessageWithSessionSchema } from '../../utils/validators';
 
 const router = Router();
 const aiService = new AIService();
@@ -42,19 +43,20 @@ function getChatSession(sessionId: string): ChatSession {
  */
 router.post('/message', async (req: Request, res: Response) => {
   try {
-    const { sessionId, message } = req.body;
-
-    if (!sessionId || !message) {
+    // 验证请求参数
+    const validation = validate(ChatMessageWithSessionSchema, req.body);
+    if (validation.error) {
       res.status(400).json({
         success: false,
         error: {
-          code: 'MISSING_PARAMS',
-          message: '缺少 sessionId 或 message 参数',
+          code: 'VALIDATION_ERROR',
+          message: validation.error,
         },
       });
       return;
     }
 
+    const { userId, sessionId, message } = validation.data!;
     const session = getChatSession(sessionId);
     const { conversationHistory, currentFocus } = session;
 

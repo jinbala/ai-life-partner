@@ -4,6 +4,7 @@
  */
 
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 
@@ -24,7 +25,7 @@ import { DataExportService } from './services/export';
 
 // 中间件
 import { requestLogger, requestId } from './api/middleware';
-import { healthRoutes, chatRoutes, feishuRoutes, visualizationRoutes } from './api/routes';
+import { healthRoutes, chatRoutes, feishuRoutes, visualizationRoutes, authRoutes } from './api/routes';
 
 // 工具
 import { logger, setLogFile, cleanupOldLogs } from './utils/logger';
@@ -43,6 +44,15 @@ const server = createServer(app);
 const PORT = config.PORT;
 
 // 应用中间件
+const corsOptions: cors.CorsOptions = {
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  credentials: true,
+  maxAge: 86400, // 24 小时
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(requestId);
 app.use(requestLogger);
@@ -66,6 +76,7 @@ app.get('/viz', (req: Request, res: Response) => {
 
 // API 路由
 app.use('/health', healthRoutes);
+app.use('/auth', authRoutes);
 app.use('/chat/api', chatRoutes);
 app.use('/feishu', feishuRoutes);
 app.use('/api/viz', visualizationRoutes);
