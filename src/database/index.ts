@@ -1,27 +1,22 @@
 /**
- * 数据库连接管理
- * 使用 better-sqlite3 提供同步 SQLite 操作
+ * 数据库统一访问层
+ * 使用工厂模式支持多种数据库后端
  */
 
-import Database from 'better-sqlite3';
-import path from 'path';
+import { IDatabase, Statement } from './IDatabase';
+import { DatabaseFactory, createDatabaseConfigFromEnv } from './DatabaseFactory';
 import { logger } from '../utils/logger';
 
-const DB_PATH = path.join(__dirname, '../../data/app.db');
-
-let db: Database.Database | null = null;
+let db: IDatabase | null = null;
 
 /**
- * 获取数据库实例
+ * 获取数据库实例（单例）
  */
-export function getDatabase(): Database.Database {
+export async function getDatabase(): Promise<IDatabase> {
   if (!db) {
-    db = new Database(DB_PATH);
-    // 启用外键约束
-    db.pragma('foreign_keys = ON');
-    // 启用 WAL 模式（更好的并发性能）
-    db.pragma('journal_mode = WAL');
-    logger.info('[Database] 数据库已连接', { path: DB_PATH });
+    const config = createDatabaseConfigFromEnv();
+    db = DatabaseFactory.create(config);
+    await db.initialize();
   }
   return db;
 }
@@ -29,23 +24,23 @@ export function getDatabase(): Database.Database {
 /**
  * 初始化数据库表结构
  */
-export function initializeDatabase(): void {
-  const database = getDatabase();
+export async function initializeDatabase(): Promise<void> {
+  const database = await getDatabase();
 
   // 用户表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       open_id TEXT UNIQUE NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       morning_push_enabled INTEGER DEFAULT 1,
       review_reminder_enabled INTEGER DEFAULT 1
     )
   `);
 
   // 用户画像表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS user_portraits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL,
@@ -58,14 +53,14 @@ export function initializeDatabase(): void {
       procrastination_triggers TEXT,
       abilities TEXT,
       growth_track TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
   // 目标表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS goals (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -79,15 +74,15 @@ export function initializeDatabase(): void {
       start_date TEXT,
       end_date TEXT,
       is_completed INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (parent_id) REFERENCES goals(id) ON DELETE CASCADE
+      FOREIGN KEY (parent_id) REFERENCES goals(id) ON DELETE SET NULL
     )
   `);
 
   // 日常任务表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS daily_tasks (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -96,15 +91,15 @@ export function initializeDatabase(): void {
       scheduled_date TEXT NOT NULL,
       is_completed INTEGER DEFAULT 0,
       completed_at TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (weekly_goal_id) REFERENCES goals(id) ON DELETE SET NULL
     )
   `);
 
   // 记忆表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -113,14 +108,14 @@ export function initializeDatabase(): void {
       importance INTEGER DEFAULT 5,
       recall_count INTEGER DEFAULT 0,
       expires_at TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
   // 能力资产表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS ability_assets (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -130,13 +125,13 @@ export function initializeDatabase(): void {
       tags TEXT,
       usage_count INTEGER DEFAULT 0,
       last_used_at TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
   // 决策记录表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS decisions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -152,14 +147,14 @@ export function initializeDatabase(): void {
       status TEXT DEFAULT 'pending',
       verify_date TEXT,
       reminded INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
   // 认知挑战表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS challenges (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -173,14 +168,14 @@ export function initializeDatabase(): void {
       evaluation TEXT,
       ability_adjustment INTEGER DEFAULT 0,
       status TEXT DEFAULT 'pending',
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       answered_at TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
   // 复盘记录表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS reviews (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -188,25 +183,25 @@ export function initializeDatabase(): void {
       period_start TEXT,
       period_end TEXT,
       content TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
-  // 对话历史表（可选，用于分析）
-  database.exec(`
+  // 对话历史表
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS conversation_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
   // 会话表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -217,14 +212,14 @@ export function initializeDatabase(): void {
       pending_decision_id TEXT,
       summary TEXT,
       summary_updated_at TEXT,
-      last_active_at TEXT DEFAULT (datetime('now')),
-      created_at TEXT DEFAULT (datetime('now')),
+      last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
   // Token 使用记录表
-  database.exec(`
+  await database.execute(`
     CREATE TABLE IF NOT EXISTS token_usage (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id TEXT,
@@ -235,22 +230,19 @@ export function initializeDatabase(): void {
       total_tokens INTEGER DEFAULT 0,
       endpoint TEXT,
       cost REAL DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
 
-  // 创建索引
-  database.exec(`
-    CREATE INDEX IF NOT EXISTS idx_memories_user ON memories(user_id, type);
-    CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id, level);
-    CREATE INDEX IF NOT EXISTS idx_tasks_user ON daily_tasks(user_id, scheduled_date);
-    CREATE INDEX IF NOT EXISTS idx_assets_user ON ability_assets(user_id, type);
-    CREATE INDEX IF NOT EXISTS idx_decisions_user ON decisions(user_id, status);
-    CREATE INDEX IF NOT EXISTS idx_challenges_user ON challenges(user_id, status);
-    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-    CREATE INDEX IF NOT EXISTS idx_token_usage_user ON token_usage(user_id);
-    CREATE INDEX IF NOT EXISTS idx_token_usage_date ON token_usage(created_at);
+  // 速率限制表
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      identifier TEXT PRIMARY KEY,
+      count INTEGER DEFAULT 0,
+      reset_at INTEGER NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
   `);
 
   logger.info('[Database] 数据库表结构已初始化');
@@ -259,13 +251,16 @@ export function initializeDatabase(): void {
 /**
  * 关闭数据库连接
  */
-export function closeDatabase(): void {
+export async function closeDatabase(): Promise<void> {
   if (db) {
-    db.close();
+    await db.close();
     db = null;
-    logger.info('[Database] 数据库连接已关闭');
   }
 }
 
-// 导出辅助函数
+// 导出工厂和配置
+export { DatabaseFactory, createDatabaseConfigFromEnv } from './DatabaseFactory';
+export { IDatabase, Statement, DatabaseConfig } from './IDatabase';
+
+// 导出迁移函数
 export { runMigrations } from './migrations';

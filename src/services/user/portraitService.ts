@@ -82,12 +82,12 @@ export class PortraitService {
   /**
    * 加载画像
    */
-  load(): PortraitSummary {
+  async load(): Promise<PortraitSummary> {
     if (this.cache) {
       return this.cache;
     }
 
-    const record = this.repository.findOrCreate(this.userId);
+    const record = await this.repository.findOrCreate(this.userId);
     if (!record) {
       return createDefaultPortraitData();
     }
@@ -123,8 +123,8 @@ export class PortraitService {
   /**
    * 保存画像
    */
-  save(portrait: PortraitSummary): void {
-    this.repository.update(this.userId, {
+  async save(portrait: PortraitSummary): Promise<void> {
+    await this.repository.update(this.userId, {
       industry: portrait.industry,
       income_structure: JSON.stringify(portrait.incomeStructure),
       resources: JSON.stringify(portrait.resources),
@@ -144,7 +144,7 @@ export class PortraitService {
     questions: string[];
     portrait: PortraitSummary;
   }> {
-    const portrait = this.load();
+    const portrait = await this.load();
     const questions: string[] = [];
 
     if (!portrait.industry) {
@@ -176,8 +176,8 @@ export class PortraitService {
   /**
    * 根据用户回答更新画像
    */
-  updateFromAnswer(question: string, answer: string): PortraitSummary {
-    const portrait = this.load();
+  async updateFromAnswer(question: string, answer: string): Promise<PortraitSummary> {
+    const portrait = await this.load();
 
     if (question.includes('行业') || question.includes('职业')) {
       portrait.industry = answer;
@@ -214,28 +214,28 @@ export class PortraitService {
       const score = parseInt(scoreMatch[1]);
       if (score >= 1 && score <= 10) {
         if (question.includes('判断力') || question.includes('商业')) {
-          this.recordAbilityChange(portrait, 'businessJudgment', score, '用户自评');
+          await this.recordAbilityChange(portrait, 'businessJudgment', score, '用户自评');
         } else if (question.includes('执行力')) {
-          this.recordAbilityChange(portrait, 'execution', score, '用户自评');
+          await this.recordAbilityChange(portrait, 'execution', score, '用户自评');
         } else if (question.includes('认知')) {
-          this.recordAbilityChange(portrait, 'cognition', score, '用户自评');
+          await this.recordAbilityChange(portrait, 'cognition', score, '用户自评');
         }
       }
     }
 
-    this.save(portrait);
+    await this.save(portrait);
     return portrait;
   }
 
   /**
    * 记录能力变化
    */
-  private recordAbilityChange(
+  private async recordAbilityChange(
     portrait: PortraitSummary,
     ability: keyof typeof portrait.abilities,
     newValue: number,
     reason: string
-  ) {
+  ): Promise<void> {
     const oldValue = portrait.abilities[ability];
     if (oldValue !== newValue) {
       portrait.abilities[ability] = newValue;
@@ -246,44 +246,44 @@ export class PortraitService {
         newValue,
         reason,
       });
-      this.repository.recordAbilityChange(this.userId, ability, oldValue, newValue, reason);
+      await this.repository.recordAbilityChange(this.userId, ability, oldValue, newValue, reason);
     }
   }
 
   /**
    * 记录决策质量
    */
-  recordDecision(decision: string, quality: number, outcome?: string) {
-    const portrait = this.load();
+  async recordDecision(decision: string, quality: number, outcome?: string): Promise<void> {
+    const portrait = await this.load();
     portrait.growthTrack.decisionQuality.push({
       date: new Date().toISOString(),
       decision,
       quality,
       outcome,
     });
-    this.repository.recordDecisionQuality(this.userId, decision, quality, outcome);
-    this.save(portrait);
+    await this.repository.recordDecisionQuality(this.userId, decision, quality, outcome);
+    await this.save(portrait);
   }
 
   /**
    * 记录认知升级
    */
-  recordCognitionUpgrade(description: string, trigger: string) {
-    const portrait = this.load();
+  async recordCognitionUpgrade(description: string, trigger: string): Promise<void> {
+    const portrait = await this.load();
     portrait.growthTrack.cognitionUpgrades.push({
       date: new Date().toISOString(),
       description,
       trigger,
     });
-    this.repository.recordCognitionUpgrade(this.userId, description, trigger);
-    this.save(portrait);
+    await this.repository.recordCognitionUpgrade(this.userId, description, trigger);
+    await this.save(portrait);
   }
 
   /**
    * 获取能力雷达图数据
    */
-  getAbilityRadar(): Record<string, number> {
-    const portrait = this.load();
+  async getAbilityRadar(): Promise<Record<string, number>> {
+    const portrait = await this.load();
     return {
       '商业判断力': portrait.abilities.businessJudgment,
       '执行力': portrait.abilities.execution,
@@ -296,8 +296,8 @@ export class PortraitService {
   /**
    * 获取画像摘要（用于 AI 上下文）
    */
-  getSummary(): string {
-    const portrait = this.load();
+  async getSummary(): Promise<string> {
+    const portrait = await this.load();
     const parts: string[] = [];
 
     if (portrait.industry) {

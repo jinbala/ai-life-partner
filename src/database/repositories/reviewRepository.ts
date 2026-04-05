@@ -2,8 +2,7 @@
  * 复盘记录数据仓库
  */
 
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface Review {
   id: string;
@@ -23,87 +22,77 @@ export interface CreateReviewInput {
   content: string;
 }
 
-export class ReviewRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    this.db = getDatabase();
-  }
-
+export class ReviewRepository extends BaseRepository {
   /**
    * 创建复盘记录
    */
-  create(input: CreateReviewInput): Review {
+  async create(input: CreateReviewInput): Promise<Review> {
     const id = `review_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    this.db.prepare(`
+    await this.execute(`
       INSERT INTO reviews (id, user_id, type, period_start, period_end, content, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-    `).run(
+      VALUES (?, ?, ?, ?, ?, ?, ${getNowSql()})
+    `, [
       id,
       input.user_id,
       input.type,
       input.period_start || null,
       input.period_end || null,
       input.content
-    );
+    ]);
 
-    return this.findById(id)!;
+    return (await this.findById(id))!;
   }
 
   /**
    * 查找复盘记录
    */
-  findById(id: string): Review | null {
-    return this.db.prepare('SELECT * FROM reviews WHERE id = ?').get(id) as Review | null;
+  async findById(id: string): Promise<Review | null> {
+    return await this.queryOne<Review>('SELECT * FROM reviews WHERE id = ?', [id]);
   }
 
   /**
    * 获取用户的所有复盘记录
    */
-  findByUser(userId: string): Review[] {
-    return this.db.prepare(
-      'SELECT * FROM reviews WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(userId) as Review[];
+  async findByUser(userId: string): Promise<Review[]> {
+    return await this.queryMany<Review>('SELECT * FROM reviews WHERE user_id = ? ORDER BY created_at DESC', [userId]);
   }
 
   /**
    * 按类型获取复盘记录
    */
-  findByType(userId: string, type: Review['type']): Review[] {
-    return this.db.prepare(
-      'SELECT * FROM reviews WHERE user_id = ? AND type = ? ORDER BY created_at DESC'
-    ).all(userId, type) as Review[];
+  async findByType(userId: string, type: Review['type']): Promise<Review[]> {
+    return await this.queryMany<Review>('SELECT * FROM reviews WHERE user_id = ? AND type = ? ORDER BY created_at DESC', [userId, type]);
   }
 
   /**
    * 获取指定日期范围内的复盘
    */
-  findByPeriod(userId: string, startDate: string, endDate: string): Review[] {
-    return this.db.prepare(`
+  async findByPeriod(userId: string, startDate: string, endDate: string): Promise<Review[]> {
+    return await this.queryMany<Review>(`
       SELECT * FROM reviews
       WHERE user_id = ? AND created_at >= ? AND created_at <= ?
       ORDER BY created_at DESC
-    `).all(userId, startDate, endDate) as Review[];
+    `, [userId, startDate, endDate]);
   }
 
   /**
    * 获取最近的复盘
    */
-  findRecent(userId: string, type: Review['type'], limit: number = 5): Review[] {
-    return this.db.prepare(`
+  async findRecent(userId: string, type: Review['type'], limit: number = 5): Promise<Review[]> {
+    return await this.queryMany<Review>(`
       SELECT * FROM reviews
       WHERE user_id = ? AND type = ?
       ORDER BY created_at DESC
       LIMIT ?
-    `).all(userId, type, limit) as Review[];
+    `, [userId, type, limit]);
   }
 
   /**
    * 删除复盘记录
    */
-  delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM reviews WHERE id = ?').run(id);
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM reviews WHERE id = ?', [id]);
+    return result > 0;
   }
 }

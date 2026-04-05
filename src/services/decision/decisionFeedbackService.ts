@@ -42,16 +42,16 @@ export class DecisionFeedbackService {
   /**
    * 创建决策记录
    */
-  create(input: Omit<CreateDecisionInput, 'user_id'>): string {
-    const decision = this.repository.create({ ...input, user_id: this.userId });
+  async create(input: Omit<CreateDecisionInput, 'user_id'>): Promise<string> {
+    const decision = await this.repository.create({ ...input, user_id: this.userId });
     return decision.id;
   }
 
   /**
    * 获取决策摘要
    */
-  getSummary(): string {
-    const decisions = this.repository.findByUser(this.userId);
+  async getSummary(): Promise<string> {
+    const decisions = await this.repository.findByUser(this.userId);
     const pending = decisions.filter(d => d.status === 'pending').length;
     const completed = decisions.filter(d => d.status === 'completed').length;
     const reviewed = decisions.filter(d => d.status === 'reviewed').length;
@@ -67,24 +67,33 @@ export class DecisionFeedbackService {
   /**
    * 获取所有决策
    */
-  getAll(): DecisionRecord[] {
-    const decisions = this.repository.findByUser(this.userId);
+  async getAll(): Promise<DecisionRecord[]> {
+    const decisions = await this.repository.findByUser(this.userId);
     return decisions.map(d => this.mapToDecisionRecord(d));
   }
 
   /**
    * 获取待复盘的决策
    */
-  getPendingDecisions(): DecisionRecord[] {
-    const decisions = this.repository.findPendingDecisions(this.userId);
+  async getPendingDecisions(): Promise<DecisionRecord[]> {
+    const decisions = await this.repository.findPendingDecisions(this.userId);
     return decisions.map(d => this.mapToDecisionRecord(d));
   }
 
   /**
-   * 检查待复盘决策
+   * 获取指定决策
    */
-  checkPendingDecisions(): DecisionRecord[] {
-    return this.getPendingDecisions();
+  async getDecision(decisionId: string): Promise<DecisionRecord | null> {
+    const decision = await this.repository.findById(decisionId);
+    if (!decision) return null;
+    return this.mapToDecisionRecord(decision);
+  }
+
+  /**
+   * 检查待复盘的决策
+   */
+  async checkPendingDecisions(): Promise<DecisionRecord[]> {
+    return await this.getPendingDecisions();
   }
 
   /**
@@ -93,52 +102,66 @@ export class DecisionFeedbackService {
   async closeDecisionLoop(
     decisionId: string,
     actualOutcome: string,
-    portraitManager: PortraitService,
-    assetsManager: AbilityAssetService,
-    memoryManager: MemoryService
+    portrait: Awaited<ReturnType<PortraitService['load']>>,
+    assets: AbilityAssetService,
+    memories: MemoryService
   ): Promise<string> {
-    const decision = this.repository.findById(decisionId);
+    const decision = await this.repository.findById(decisionId);
     if (!decision) {
-      throw new Error('决策记录不存在');
+      throw new Error('决策不存在');
     }
 
-    // 计算偏差
-    const expected = decision.expected_outcome || '';
-    const deviation = actualOutcome !== expected ? `预期：${expected}，实际：${actualOutcome}` : '符合预期';
+    // 分析偏差
+    const deviationAnalysis = this.analyzeDeviation(actualOutcome, decision.expected_outcome);
 
-    // 提取经验教训
-    const lessonLearned = `在${decision.topic}决策中，选择${decision.chosen}，${deviation}`;
+    // 提取教训
+    const lessonLearned = this.extractLesson(decision.topic, actualOutcome, portrait);
 
-    // 更新数据库
-    this.repository.closeDecisionLoop(decisionId, actualOutcome, deviation, lessonLearned);
+    // 更新决策状态
+    await this.repository.closeDecisionLoop(decisionId, actualOutcome, deviationAnalysis, lessonLearned);
 
-    // 保存为能力资产
-    try {
-      assetsManager.manualSave('教训', lessonLearned);
-    } catch (e) {
-      logger.error('[DecisionService] 保存资产失败', e);
+    // 记录到能力资产
+    if (lessonLearned) {
+      await assets.manualSave('lesson', lessonLearned);
     }
 
-    // 更新画像
-    const quality = actualOutcome === expected ? 8 : 5;
-    portraitManager.recordDecision(decision.topic, quality, actualOutcome);
+    // 记录到记忆
+    await memories.addMemory('decision', `决策复盘：${decision.topic} - ${lessonLearned}`);
 
-    return `决策复盘完成：${lessonLearned}`;
+    return this.generateFeedback(decision, actualOutcome, deviationAnalysis, lessonLearned);
   }
 
-  /**
-   * 获取决策详情
-   */
-  getById(id: string): DecisionRecord | null {
-    const decision = this.repository.findById(id);
-    return decision ? this.mapToDecisionRecord(decision) : null;
+  private analyzeDeviation(actualOutcome: string, expectedOutcome: string | null): string {
+    // 简单分析预期与实际的差异
+    if (!expectedOutcome) return '无预期结果';
+
+    const expected = expectedOutcome.toLowerCase();
+    const actual = actualOutcome.toLowerCase();
+
+    if (expected.includes('成功') && !actual.includes('成功')) {
+      return '结果未达预期';
+    } else if (expected.includes('增长') && !actual.includes('增长')) {
+      return '增长未实现';
+    }
+
+    return '结果与预期基本一致';
   }
 
-  /**
-   * 删除决策
-   */
-  delete(id: string): boolean {
-    return this.repository.delete(id);
+  private extractLesson(topic: string, actualOutcome: string, portrait: any): string {
+    // 从决策结果中提取教训
+    if (actualOutcome.includes('失败') || actualOutcome.includes('错误')) {
+      return `在${topic}上的教训：${actualOutcome}`;
+    }
+    return `在${topic}上的经验：${actualOutcome}`;
+  }
+
+  private generateFeedback(
+    decision: any,
+    actualOutcome: string,
+    deviation: string,
+    lessonLearned: string
+  ): string {
+    return `决策复盘完成\n\n主题：${decision.topic}\n你的选择：${decision.chosen}\n预期结果：${decision.expected_outcome}\n实际结果：${actualOutcome}\n偏差分析：${deviation}\n\n经验教训：${lessonLearned}`;
   }
 
   private mapToDecisionRecord(d: any): DecisionRecord {
@@ -155,9 +178,23 @@ export class DecisionFeedbackService {
       lessonLearned: d.lesson_learned,
       status: d.status as DecisionRecord['status'],
       verifyDate: d.verify_date,
-      reminded: d.reminded,
+      reminded: d.reminded === 1,
       createdAt: d.created_at,
       updatedAt: d.updated_at,
     };
+  }
+
+  /**
+   * 标记决策为已复盘
+   */
+  async markAsReviewed(decisionId: string): Promise<void> {
+    await this.repository.updateStatus(decisionId, 'reviewed');
+  }
+
+  /**
+   * 删除决策
+   */
+  async delete(decisionId: string): Promise<boolean> {
+    return await this.repository.delete(decisionId);
   }
 }

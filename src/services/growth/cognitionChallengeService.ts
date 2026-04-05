@@ -45,16 +45,16 @@ export class CognitionChallengeService {
   /**
    * 创建挑战
    */
-  create(input: Omit<CreateChallengeInput, 'user_id'>): string {
-    const challenge = this.repository.create({ ...input, user_id: this.userId });
+  async create(input: Omit<CreateChallengeInput, 'user_id'>): Promise<string> {
+    const challenge = await this.repository.create({ ...input, user_id: this.userId });
     return challenge.id;
   }
 
   /**
    * 获取待回答的挑战
    */
-  getPendingChallenge(): Challenge | null {
-    const challenge = this.repository.findPending(this.userId);
+  async getPendingChallenge(): Promise<Challenge | null> {
+    const challenge = await this.repository.findPending(this.userId);
     if (!challenge) return null;
 
     return this.mapToChallenge(challenge);
@@ -63,8 +63,8 @@ export class CognitionChallengeService {
   /**
    * 提交答案
    */
-  submitAnswer(challengeId: string, answer: string): void {
-    this.repository.submitAnswer(challengeId, answer);
+  async submitAnswer(challengeId: string, answer: string): Promise<void> {
+    await this.repository.submitAnswer(challengeId, answer);
   }
 
   /**
@@ -80,7 +80,7 @@ export class CognitionChallengeService {
     insight: string;
     ability_adjustment: number;
   }> {
-    const challenge = this.repository.findById(challengeId);
+    const challenge = await this.repository.findById(challengeId);
     if (!challenge) {
       throw new Error('挑战不存在');
     }
@@ -92,7 +92,7 @@ export class CognitionChallengeService {
     const ability_adjustment = score >= 8 ? 1 : 0;
 
     // 保存评估结果
-    this.repository.saveEvaluation(challengeId, score, evaluation, ability_adjustment);
+    await this.repository.saveEvaluation(challengeId, score, evaluation, ability_adjustment);
 
     // 更新能力分数
     if (ability_adjustment !== 0 && challenge.related_ability) {
@@ -105,8 +105,8 @@ export class CognitionChallengeService {
   /**
    * 获取挑战摘要
    */
-  getSummary(): string {
-    const stats = this.repository.getStats(this.userId);
+  async getSummary(): Promise<string> {
+    const stats = await this.repository.getStats(this.userId);
     return `总挑战：${stats.total} | ` +
       `待回答：${stats.pending} | ` +
       `已回答：${stats.answered} | ` +
@@ -117,16 +117,16 @@ export class CognitionChallengeService {
   /**
    * 获取所有挑战
    */
-  getAll(): Challenge[] {
-    const challenges = this.repository.findByUser(this.userId);
+  async getAll(): Promise<Challenge[]> {
+    const challenges = await this.repository.findByUser(this.userId);
     return challenges.map(c => this.mapToChallenge(c));
   }
 
   /**
    * 删除挑战
    */
-  delete(id: string): boolean {
-    return this.repository.delete(id);
+  async delete(id: string): Promise<boolean> {
+    return await this.repository.delete(id);
   }
 
   private mapToChallenge(c: any): Challenge {

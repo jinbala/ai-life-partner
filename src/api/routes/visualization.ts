@@ -20,7 +20,7 @@ router.get('/ability-radar', sessionAuth, async (req: Request, res: Response) =>
 
   try {
     const portraitRepo = new PortraitRepository();
-    const portrait = portraitRepo.findByUserId(userId as string);
+    const portrait = await portraitRepo.findByUserId(userId as string);
 
     if (!portrait || !portrait.abilities) {
       res.json({
@@ -69,7 +69,7 @@ router.get('/ability-trend', sessionAuth, async (req: Request, res: Response) =>
 
   try {
     const portraitRepo = new PortraitRepository();
-    const portrait = portraitRepo.findByUserId(userId as string);
+    const portrait = await portraitRepo.findByUserId(userId as string);
 
     if (!portrait || !portrait.growth_track) {
       res.json({
@@ -159,7 +159,7 @@ router.get('/goal-progress', sessionAuth, async (req: Request, res: Response) =>
   try {
     const goalRepo = new GoalRepository();
     const taskRepo = new DailyTaskRepository();
-    const goals = goalRepo.findByUser(userId as string);
+    const goals = await goalRepo.findByUser(userId as string);
 
     // 按级别分组
     const northStar = goals.find(g => g.level === 'north_star');
@@ -169,8 +169,8 @@ router.get('/goal-progress', sessionAuth, async (req: Request, res: Response) =>
 
     // 获取今日任务
     const today = new Date().toISOString().split('T')[0];
-    const todayTasks = taskRepo.findByDate(userId as string, today);
-    const completedTasks = todayTasks.filter(t => t.is_completed).length;
+    const todayTasks = await taskRepo.findByDate(userId as string, today);
+    const completedTasks = todayTasks.filter(t => t.is_completed === 1).length;
     const taskProgress = todayTasks.length > 0 ? (completedTasks / todayTasks.length) * 100 : 0;
 
     const data = {
@@ -224,11 +224,11 @@ router.get('/dashboard', sessionAuth, async (req: Request, res: Response) => {
     const taskRepo = new DailyTaskRepository();
     const tokenUsageRepo = new TokenUsageRepository();
 
-    const portrait = portraitRepo.findByUserId(userId as string);
-    const goals = goalRepo.findByUser(userId as string);
+    const portrait = await portraitRepo.findByUserId(userId as string);
+    const goals = await goalRepo.findByUser(userId as string);
     const today = new Date().toISOString().split('T')[0];
-    const todayTasks = taskRepo.findByDate(userId as string, today);
-    const tokenStats = tokenUsageRepo.getTotalSummary(userId as string, 7);
+    const todayTasks = await taskRepo.findByDate(userId as string, today);
+    const tokenStats = await tokenUsageRepo.getTotalSummary(userId as string, 7);
 
     const abilities = portrait?.abilities ? JSON.parse(portrait.abilities) : {
       businessJudgment: 5,
@@ -243,7 +243,7 @@ router.get('/dashboard', sessionAuth, async (req: Request, res: Response) => {
       overview: {
         totalGoals: goals.length,
         todayTasks: todayTasks.length,
-        completedTasks: todayTasks.filter(t => t.is_completed).length,
+        completedTasks: todayTasks.filter(t => t.is_completed === 1).length,
         decisionStyle: portrait?.decision_style || 'intuitive',
       },
       abilities: {

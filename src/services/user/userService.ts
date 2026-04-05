@@ -36,28 +36,28 @@ export class UserService {
   /**
    * 获取所有服务的摘要
    */
-  getSummary(): string {
+  async getSummary(): Promise<string> {
     const parts: string[] = [];
 
-    const portraitSummary = this.portrait.getSummary();
+    const portraitSummary = await this.portrait.getSummary();
     if (portraitSummary) parts.push(`[画像] ${portraitSummary}`);
 
-    const goalSummary = this.goals.getSummary();
+    const goalSummary = await this.goals.getSummary();
     if (goalSummary) parts.push(`[目标] ${goalSummary}`);
 
-    const memorySummary = this.memories.getSummary();
+    const memorySummary = await this.memories.getSummary();
     if (memorySummary) parts.push(`[记忆] ${memorySummary}`);
 
-    const assetSummary = this.assets.getSummary();
+    const assetSummary = await this.assets.getSummary();
     if (assetSummary) parts.push(`[资产] ${assetSummary}`);
 
-    const decisionSummary = this.decisions.getSummary();
+    const decisionSummary = await this.decisions.getSummary();
     if (decisionSummary) parts.push(`[决策] ${decisionSummary}`);
 
-    const challengeSummary = this.challenges.getSummary();
+    const challengeSummary = await this.challenges.getSummary();
     if (challengeSummary) parts.push(`[挑战] ${challengeSummary}`);
 
-    const reviewSummary = this.reviews.getSummary();
+    const reviewSummary = await this.reviews.getSummary();
     if (reviewSummary) parts.push(`[复盘] ${reviewSummary}`);
 
     return parts.join('\n') || '暂无数据';

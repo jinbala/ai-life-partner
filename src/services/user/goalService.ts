@@ -29,16 +29,16 @@ export class GoalService {
   /**
    * 创建目标
    */
-  createGoal(input: Omit<CreateGoalInput, 'user_id'>): string {
-    const goal = this.goalRepository.create({ ...input, user_id: this.userId });
+  async createGoal(input: Omit<CreateGoalInput, 'user_id'>): Promise<string> {
+    const goal = await this.goalRepository.create({ ...input, user_id: this.userId });
     return goal.id;
   }
 
   /**
    * 获取目标摘要
    */
-  getSummary(): string {
-    const goals = this.goalRepository.findByUser(this.userId);
+  async getSummary(): Promise<string> {
+    const goals = await this.goalRepository.findByUser(this.userId);
     if (goals.length === 0) {
       return '暂无目标';
     }
@@ -68,61 +68,70 @@ export class GoalService {
   /**
    * 获取今日任务
    */
-  getTodayTasks(): Array<{ id: string; description: string; isCompleted: boolean }> {
+  async getTodayTasks(): Promise<Array<{ id: string; description: string; isCompleted: boolean }>> {
     const today = new Date().toISOString().split('T')[0];
-    const tasks = this.taskRepository.findByDate(this.userId, today);
+    const tasks = await this.taskRepository.findByDate(this.userId, today);
     return tasks.map(t => ({
       id: t.id,
       description: t.description,
-      isCompleted: t.is_completed,
+      isCompleted: t.is_completed === 1,
     }));
   }
 
   /**
-   * 添加日常任务
+   * 创建任务
    */
-  addDailyTask(description: string, scheduledDate: string, weeklyGoalId?: string): string {
-    const task = this.taskRepository.create({
-      user_id: this.userId,
-      weekly_goal_id: weeklyGoalId,
-      description,
-      scheduled_date: scheduledDate,
-    });
+  async createTask(input: Omit<CreateTaskInput, 'user_id'>): Promise<string> {
+    const task = await this.taskRepository.create({ ...input, user_id: this.userId });
     return task.id;
   }
 
   /**
-   * 标记任务完成
+   * 标记任务为完成
    */
-  completeTask(taskId: string): void {
-    this.taskRepository.markAsCompleted(taskId);
-  }
-
-  /**
-   * 更新目标进度
-   */
-  updateGoalProgress(goalId: string, progress: number): void {
-    this.goalRepository.updateProgress(goalId, progress);
+  async markTaskCompleted(taskId: string): Promise<void> {
+    await this.taskRepository.markAsCompleted(taskId);
   }
 
   /**
    * 获取所有目标
    */
-  getAllGoals() {
-    return this.goalRepository.findByUser(this.userId);
+  async getAllGoals(): Promise<any[]> {
+    const goals = await this.goalRepository.findByUser(this.userId);
+    return goals.map(g => ({
+      id: g.id,
+      level: g.level,
+      description: g.description,
+      progress: g.progress,
+      isCompleted: g.is_completed === 1,
+    }));
+  }
+
+  /**
+   * 更新目标进度
+   */
+  async updateGoalProgress(goalId: string, progress: number): Promise<void> {
+    await this.goalRepository.updateProgress(goalId, progress);
+  }
+
+  /**
+   * 标记目标为完成
+   */
+  async markGoalCompleted(goalId: string): Promise<void> {
+    await this.goalRepository.markAsCompleted(goalId);
   }
 
   /**
    * 删除目标
    */
-  deleteGoal(goalId: string): boolean {
-    return this.goalRepository.delete(goalId);
+  async deleteGoal(goalId: string): Promise<boolean> {
+    return await this.goalRepository.delete(goalId);
   }
 
   /**
    * 删除任务
    */
-  deleteTask(taskId: string): boolean {
-    return this.taskRepository.delete(taskId);
+  async deleteTask(taskId: string): Promise<boolean> {
+    return await this.taskRepository.delete(taskId);
   }
 }

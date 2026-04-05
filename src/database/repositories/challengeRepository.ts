@@ -2,8 +2,7 @@
  * 认知挑战数据仓库
  */
 
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface Challenge {
   id: string;
@@ -31,23 +30,17 @@ export interface CreateChallengeInput {
   difficulty?: Challenge['difficulty'];
 }
 
-export class ChallengeRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    this.db = getDatabase();
-  }
-
+export class ChallengeRepository extends BaseRepository {
   /**
    * 创建认知挑战
    */
-  create(input: CreateChallengeInput): Challenge {
+  async create(input: CreateChallengeInput): Promise<Challenge> {
     const id = `challenge_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    this.db.prepare(`
+    await this.execute(`
       INSERT INTO challenges (id, user_id, question, option_a, option_b, related_ability, difficulty, status, ability_adjustment, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, datetime('now'))
-    `).run(
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ${getNowSql()})
+    `, [
       id,
       input.user_id,
       input.question,
@@ -55,77 +48,73 @@ export class ChallengeRepository {
       input.option_b || null,
       input.related_ability || null,
       input.difficulty || 'medium'
-    );
+    ]);
 
-    return this.findById(id)!;
+    return (await this.findById(id))!;
   }
 
   /**
    * 查找挑战
    */
-  findById(id: string): Challenge | null {
-    return this.db.prepare('SELECT * FROM challenges WHERE id = ?').get(id) as Challenge | null;
+  async findById(id: string): Promise<Challenge | null> {
+    return await this.queryOne<Challenge>('SELECT * FROM challenges WHERE id = ?', [id]);
   }
 
   /**
    * 获取用户的所有挑战
    */
-  findByUser(userId: string): Challenge[] {
-    return this.db.prepare(
-      'SELECT * FROM challenges WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(userId) as Challenge[];
+  async findByUser(userId: string): Promise<Challenge[]> {
+    return await this.queryMany<Challenge>('SELECT * FROM challenges WHERE user_id = ? ORDER BY created_at DESC', [userId]);
   }
 
   /**
    * 获取待回答的挑战
    */
-  findPending(userId: string): Challenge | null {
-    return this.db.prepare(`
+  async findPending(userId: string): Promise<Challenge | null> {
+    return await this.queryOne<Challenge>(`
       SELECT * FROM challenges
       WHERE user_id = ? AND status = 'pending'
       ORDER BY created_at ASC
       LIMIT 1
-    `).get(userId) as Challenge | null;
+    `, [userId]);
   }
 
   /**
    * 提交答案
    */
-  submitAnswer(id: string, user_answer: string): void {
-    this.db.prepare(`
-      UPDATE challenges
-      SET user_answer = ?, status = 'answered', answered_at = datetime('now')
-      WHERE id = ?
-    `).run(user_answer, id);
+  async submitAnswer(id: string, user_answer: string): Promise<void> {
+    await this.runUpdate(`UPDATE challenges SET user_answer = ?, status = 'answered', answered_at = ${getNowSql()} WHERE id = ?`, [user_answer, id]);
   }
 
   /**
    * 保存评估结果
    */
-  saveEvaluation(
+  async saveEvaluation(
     id: string,
     score: number,
     evaluation: string,
     ability_adjustment: number
-  ): void {
-    this.db.prepare(`
-      UPDATE challenges
-      SET score = ?, evaluation = ?, ability_adjustment = ?, status = 'evaluated'
-      WHERE id = ?
-    `).run(score, evaluation, ability_adjustment, id);
+  ): Promise<void> {
+    await this.runUpdate(`UPDATE challenges SET score = ?, evaluation = ?, ability_adjustment = ?, status = 'evaluated' WHERE id = ?`, [score, evaluation, ability_adjustment, id]);
   }
 
   /**
    * 获取挑战统计
    */
-  getStats(userId: string): {
+  async getStats(userId: string): Promise<{
     total: number;
     pending: number;
     answered: number;
     evaluated: number;
     avg_score: number;
-  } {
-    const stats = this.db.prepare(`
+  }> {
+    const stats = await this.queryOne<{
+      total: number;
+      pending: number;
+      answered: number;
+      evaluated: number;
+      avg_score: number;
+    }>(`
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
@@ -134,28 +123,22 @@ export class ChallengeRepository {
         AVG(CASE WHEN score IS NOT NULL THEN score ELSE NULL END) as avg_score
       FROM challenges
       WHERE user_id = ?
-    `).get(userId) as {
-      total: number;
-      pending: number;
-      answered: number;
-      evaluated: number;
-      avg_score: number;
-    };
+    `, [userId]);
 
     return {
-      total: stats.total || 0,
-      pending: stats.pending || 0,
-      answered: stats.answered || 0,
-      evaluated: stats.evaluated || 0,
-      avg_score: stats.avg_score || 0,
+      total: stats?.total || 0,
+      pending: stats?.pending || 0,
+      answered: stats?.answered || 0,
+      evaluated: stats?.evaluated || 0,
+      avg_score: stats?.avg_score || 0,
     };
   }
 
   /**
    * 删除挑战
    */
-  delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM challenges WHERE id = ?').run(id);
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM challenges WHERE id = ?', [id]);
+    return result > 0;
   }
 }

@@ -112,7 +112,7 @@ app.get('/api/export/user/:userId', async (req: Request, res: Response) => {
   const { format } = req.query as { format?: string };
 
   try {
-    const data = dataExportService.exportUserData(userId);
+    const data = await dataExportService.exportUserData(userId);
 
     if (format === 'file') {
       const filePath = `data/exports/export_${userId}_${Date.now()}.json`;
@@ -160,7 +160,7 @@ async function handleUserMessage(
   content: string,
   messageId: string
 ) {
-  const session = sessionService.getOrCreate(userId);
+  const session = await sessionService.getOrCreate(userId);
   const userServices = new UserService(userId);
 
   // 检查是否是命令
@@ -170,14 +170,14 @@ async function handleUserMessage(
   }
 
   // 检查是否在回答认知挑战
-  const pendingChallenge = userServices.challenges.getPendingChallenge();
+  const pendingChallenge = await userServices.challenges.getPendingChallenge();
   if (pendingChallenge || session.hasPendingChallenge) {
     session.hasPendingChallenge = true;
-    sessionService.update(userId, { hasPendingChallenge: true });
+    await sessionService.update(userId, { hasPendingChallenge: true });
 
     if (pendingChallenge) {
       try {
-        const portrait = userServices.portrait.load();
+        const portrait = await userServices.portrait.load();
         const result = await userServices.challenges.evaluateAnswer(
           pendingChallenge.id,
           content,
@@ -186,17 +186,17 @@ async function handleUserMessage(
 
         // 更新能力分数
         if (result.ability_adjustment !== 0 && pendingChallenge.relatedAbility) {
-          const p = userServices.portrait.load();
+          const p = await userServices.portrait.load();
           const dim = pendingChallenge.relatedAbility as keyof typeof p.abilities;
           if (p.abilities[dim] !== undefined) {
             p.abilities[dim] += result.ability_adjustment;
             p.abilities[dim] = Math.max(1, Math.min(10, p.abilities[dim]));
-            userServices.portrait.save(p);
+            await userServices.portrait.save(p);
           }
         }
 
         session.hasPendingChallenge = false;
-        sessionService.update(userId, { hasPendingChallenge: false });
+        await sessionService.update(userId, { hasPendingChallenge: false });
 
         await feishuMessageService.sendTextMessage(
           openId,
@@ -210,12 +210,12 @@ async function handleUserMessage(
   }
 
   // 检查是否在回答决策复盘
-  const pendingDecisions = userServices.decisions.checkPendingDecisions();
+  const pendingDecisions = await userServices.decisions.checkPendingDecisions();
   if (pendingDecisions.length > 0 || session.hasPendingDecisionReview) {
     if (pendingDecisions.length > 0 && !session.hasPendingDecisionReview) {
       session.hasPendingDecisionReview = true;
       session.pendingDecisionId = pendingDecisions[0].id;
-      sessionService.update(userId, {
+      await sessionService.update(userId, {
         hasPendingDecisionReview: true,
         pendingDecisionId: pendingDecisions[0].id,
       });
@@ -232,17 +232,18 @@ async function handleUserMessage(
 
     if (session.hasPendingDecisionReview && session.pendingDecisionId) {
       try {
+        const portrait = await userServices.portrait.load();
         const feedback = await userServices.decisions.closeDecisionLoop(
           session.pendingDecisionId,
           content,
-          userServices.portrait,
+          portrait,
           userServices.assets,
           userServices.memories
         );
 
         session.hasPendingDecisionReview = false;
         session.pendingDecisionId = null;
-        sessionService.update(userId, {
+        await sessionService.update(userId, {
           hasPendingDecisionReview: false,
           pendingDecisionId: null,
         });
@@ -259,11 +260,11 @@ async function handleUserMessage(
   }
 
   // 检查是否触发画像初始化
-  const portrait = userServices.portrait.load();
+  const portrait = await userServices.portrait.load();
   if (!portrait.industry) {
     const { questions } = await userServices.portrait.initializeWithQuestions();
     if (questions.length > 0) {
-      sessionService.update(userId, { currentFocus: 'initializing_portrait' });
+      await sessionService.update(userId, { currentFocus: 'initializing_portrait' });
 
       await feishuMessageService.sendTextMessage(
         openId,
@@ -275,24 +276,24 @@ async function handleUserMessage(
   }
 
   // 获取上下文
-  const portraitSummary = userServices.portrait.getSummary();
-  const goalSummary = userServices.goals.getSummary();
-  const memorySummary = userServices.memories.getSummary();
-  const assetsSummary = userServices.assets.getSummary();
+  const portraitSummary = await userServices.portrait.getSummary();
+  const goalSummary = await userServices.goals.getSummary();
+  const memorySummary = await userServices.memories.getSummary();
+  const assetsSummary = await userServices.assets.getSummary();
 
   // 检索相关记忆和资产
   const keywords = extractKeywords(content);
-  const relatedMemories = userServices.memories.search(keywords);
-  const relatedAssets = userServices.assets.search(keywords);
+  const relatedMemories = await userServices.memories.search(keywords);
+  const relatedAssets = await userServices.assets.search(keywords);
 
   // 添加消息到历史
-  sessionService.addMessage(userId, 'user', content);
+  await sessionService.addMessage(userId, 'user', content);
 
   // 检查是否紧急决策模式
   if (content.includes('急') || content.includes('紧急')) {
     const response = await aiService.quickDecision(content);
     await feishuMessageService.sendTextMessage(openId, response);
-    sessionService.addMessage(userId, 'assistant', response);
+    await sessionService.addMessage(userId, 'assistant', response);
     return;
   }
 
@@ -303,7 +304,7 @@ async function handleUserMessage(
   if (isDecisionMode) {
     const response = await aiService.decisionAnalysis(content, portraitSummary);
     await feishuMessageService.sendTextMessage(openId, response);
-    sessionService.addMessage(userId, 'assistant', response);
+    await sessionService.addMessage(userId, 'assistant', response);
     return;
   }
 
@@ -331,7 +332,7 @@ async function handleUserMessage(
   const response = await aiService.chat(messages, { maxTokens: 200 });
 
   await feishuMessageService.sendTextMessage(openId, response.content);
-  sessionService.addMessage(userId, 'assistant', response.content);
+  await sessionService.addMessage(userId, 'assistant', response.content);
 }
 
 /**
@@ -393,10 +394,10 @@ async function handleCommand(
 "复盘" - 开始每日复盘`
     );
   } else if (cmd === '/goals') {
-    const summary = userServices.goals.getSummary();
+    const summary = await userServices.goals.getSummary();
     await feishuMessageService.sendTextMessage(openId, `📊 目标状态：\n\n${summary}`);
   } else if (cmd === '/tasks') {
-    const tasks = userServices.goals.getTodayTasks();
+    const tasks = await userServices.goals.getTodayTasks();
     if (tasks.length === 0) {
       await feishuMessageService.sendTextMessage(openId, '📝 今日暂无任务');
     } else {
@@ -412,20 +413,21 @@ async function handleCommand(
   } else if (cmdRaw.startsWith('/add-task ')) {
     const taskContent = command.substring('/add-task '.length);
     const today = new Date().toISOString().split('T')[0];
-    userServices.goals.addDailyTask(taskContent, today);
+    await userServices.goals.createTask({ description: taskContent, scheduled_date: today });
     await feishuMessageService.sendTextMessage(
       openId,
       `✅ 已添加任务：${taskContent}`
     );
   } else if (cmd === '/portrait') {
-    const p = userServices.portrait.load();
+    const p = await userServices.portrait.load();
+    const radar = await userServices.portrait.getAbilityRadar();
     const text =
       `👤 用户画像：\n\n行业：${p.industry || '未设置'}\n` +
       `决策风格：${p.decisionStyle}\n` +
-      `能力雷达：${JSON.stringify(userServices.portrait.getAbilityRadar(), null, 2)}`;
+      `能力雷达：${JSON.stringify(radar, null, 2)}`;
     await feishuMessageService.sendTextMessage(openId, text);
   } else if (cmd === '/memories') {
-    const memories = userServices.memories.loadAll();
+    const memories = await userServices.memories.loadAll();
     if (memories.length === 0) {
       await feishuMessageService.sendTextMessage(openId, '💭 暂无长期记忆');
     } else {
@@ -438,22 +440,23 @@ async function handleCommand(
       await feishuMessageService.sendTextMessage(openId, text);
     }
   } else if (cmd === '/assets') {
-    const summary = userServices.assets.getSummary();
+    const summary = await userServices.assets.getSummary();
     await feishuMessageService.sendTextMessage(openId, `💎 能力资产：${summary}`);
   } else if (cmd === '/challenge') {
+    const summary = await userServices.challenges.getSummary();
     await feishuMessageService.sendTextMessage(
       openId,
-      `🧠 ${userServices.challenges.getSummary()}`
+      `🧠 ${summary}`
     );
   } else if (cmd === '/challenge-now') {
     try {
-      const portrait = userServices.portrait.load();
-      const goals = [userServices.goals.getSummary()];
+      const portrait = await userServices.portrait.load();
+      const goals = [await userServices.goals.getSummary()];
       const recentTopics = session.conversationHistory
         .map((h: any) => h.content)
         .slice(-5);
-      const recentChallenges = userServices.challenges.getAll();
-      const challenge = await userServices.challenges.create({
+      const recentChallenges = await userServices.challenges.getAll();
+      await userServices.challenges.create({
         question: '这是一个认知挑战问题',
         option_a: '选项 A',
         option_b: '选项 B',
@@ -469,12 +472,13 @@ async function handleCommand(
       );
     }
   } else if (cmd === '/decisions') {
+    const summary = await userServices.decisions.getSummary();
     await feishuMessageService.sendTextMessage(
       openId,
-      `📊 ${userServices.decisions.getSummary()}`
+      `📊 ${summary}`
     );
   } else if (cmd === '/reset') {
-    sessionService.clear(userId);
+    await sessionService.clear(userId);
     await feishuMessageService.sendTextMessage(openId, '✅ 会话已重置');
   } else if (cmdRaw.includes('复盘')) {
     await feishuMessageService.sendTextMessage(

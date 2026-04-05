@@ -72,14 +72,14 @@ export class SessionManager extends EventEmitter {
    * 创建或获取会话
    * 注意：现在使用 sessionId 作为键，而不是 userId
    */
-  getOrCreateSession(sessionId: string, userId?: string): SessionData {
+  async getOrCreateSession(sessionId: string, userId?: string): Promise<SessionData> {
     const existing = this.sessions.get(sessionId);
     if (existing) {
       logger.debug('[SessionManager] 内存中命中', { sessionId });
       existing.lastActiveAt = Date.now();
       // 同步到数据库
       if (this.useDatabase) {
-        this.saveSessionToDatabase(existing);
+        await this.saveSessionToDatabase(existing);
       }
       return existing;
     }
@@ -89,13 +89,13 @@ export class SessionManager extends EventEmitter {
     // 尝试从数据库加载（优先通过 sessionId 加载）
     if (this.useDatabase) {
       logger.debug('[SessionManager] 准备调用 sessionRepo.findById', { sessionId });
-      let dbSession = this.sessionRepo.findById(sessionId);
+      let dbSession = await this.sessionRepo.findById(sessionId);
       logger.debug('[SessionManager] sessionRepo.findById 返回', { sessionId, found: !!dbSession });
 
       // 如果没有找到，尝试通过 userId 加载用户的最近会话
       if (!dbSession && userId) {
         logger.debug('[SessionManager] 通过 userId 查询', { userId });
-        dbSession = this.sessionRepo.findByUser(userId);
+        dbSession = await this.sessionRepo.findByUser(userId);
         logger.debug('[SessionManager] sessionRepo.findByUser 返回', { userId, found: !!dbSession });
       }
 
@@ -153,7 +153,7 @@ export class SessionManager extends EventEmitter {
     // 保存到数据库
     if (this.useDatabase) {
       logger.debug('[SessionManager] 保存新会话到数据库', { sessionId });
-      this.saveSessionToDatabase(newSession);
+      await this.saveSessionToDatabase(newSession);
     }
 
     logger.debug('[SessionManager] 创建新会话完成', { sessionId, count: this.sessions.size });
@@ -164,7 +164,7 @@ export class SessionManager extends EventEmitter {
   /**
    * 保存会话到数据库
    */
-  private saveSessionToDatabase(session: SessionData): void {
+  private async saveSessionToDatabase(session: SessionData): Promise<void> {
     try {
       logger.debug('[SessionManager] saveSessionToDatabase 开始', { sessionId: session.sessionId });
       const chatSession = session.metadata.chatSession;
@@ -177,7 +177,7 @@ export class SessionManager extends EventEmitter {
         historyLength: conversationHistory.length
       });
 
-      this.sessionRepo.upsert(session.sessionId, session.userId, {
+      await this.sessionRepo.upsert(session.sessionId, session.userId, {
         conversation_history: conversationHistory,
         current_focus: chatSession?.currentFocus || session.metadata.currentFocus,
         has_pending_challenge: session.metadata.hasPendingChallenge || false,
@@ -201,8 +201,8 @@ export class SessionManager extends EventEmitter {
   /**
    * 添加对话消息（同步到数据库）
    */
-  addMessage(sessionId: string, role: 'user' | 'assistant', content: string): void {
-    const session = this.getOrCreateSession(sessionId);
+  async addMessage(sessionId: string, role: 'user' | 'assistant', content: string): Promise<void> {
+    const session = await this.getOrCreateSession(sessionId);
     session.conversation.push({
       role,
       content,
@@ -217,7 +217,7 @@ export class SessionManager extends EventEmitter {
 
     // 同步到数据库
     if (this.useDatabase) {
-      this.saveSessionToDatabase(session);
+      await this.saveSessionToDatabase(session);
     }
   }
 
@@ -243,13 +243,13 @@ export class SessionManager extends EventEmitter {
   /**
    * 更新会话元数据（同步到数据库）
    */
-  updateMetadata(sessionId: string, metadata: Record<string, any>): void {
-    const session = this.getOrCreateSession(sessionId);
+  async updateMetadata(sessionId: string, metadata: Record<string, any>): Promise<void> {
+    const session = await this.getOrCreateSession(sessionId);
     session.metadata = { ...session.metadata, ...metadata };
 
     // 同步到数据库
     if (this.useDatabase) {
-      this.saveSessionToDatabase(session);
+      await this.saveSessionToDatabase(session);
     }
   }
 
@@ -269,12 +269,12 @@ export class SessionManager extends EventEmitter {
   /**
    * 删除会话（同时删除数据库记录）
    */
-  deleteSession(sessionId: string): boolean {
+  async deleteSession(sessionId: string): Promise<boolean> {
     const existed = this.sessions.delete(sessionId);
 
     // 同时删除数据库记录
     if (this.useDatabase) {
-      this.sessionRepo.delete(sessionId);
+      await this.sessionRepo.delete(sessionId);
     }
 
     if (existed) {

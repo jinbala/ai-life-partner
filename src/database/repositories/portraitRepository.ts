@@ -2,8 +2,7 @@
  * 用户画像数据仓库
  */
 
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface UserPortrait {
   id: number;
@@ -33,20 +32,15 @@ export interface CreatePortraitInput {
   growth_track?: string | any;
 }
 
-export class PortraitRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    this.db = getDatabase();
-  }
-
+export class PortraitRepository extends BaseRepository {
   /**
    * 创建或获取用户画像
    */
-  findOrCreate(userId: string): UserPortrait {
-    const existing = this.db.prepare(
-      'SELECT * FROM user_portraits WHERE user_id = ? ORDER BY version DESC LIMIT 1'
-    ).get(userId) as UserPortrait | undefined;
+  async findOrCreate(userId: string): Promise<UserPortrait> {
+    const existing = await this.queryOne<UserPortrait>(
+      'SELECT * FROM user_portraits WHERE user_id = ? ORDER BY version DESC LIMIT 1',
+      [userId]
+    );
 
     if (existing) {
       return existing;
@@ -74,10 +68,10 @@ export class PortraitRepository {
       }),
     };
 
-    this.db.prepare(`
+    await this.execute(`
       INSERT INTO user_portraits (user_id, version, industry, income_structure, resources, decision_style, stuck_points, procrastination_triggers, abilities, growth_track)
       VALUES (?, 1, ?, ?, ?, 'intuitive', ?, ?, ?, ?)
-    `).run(
+    `, [
       userId,
       defaultData.industry,
       defaultData.income_structure,
@@ -86,31 +80,29 @@ export class PortraitRepository {
       defaultData.procrastination_triggers,
       defaultData.abilities,
       defaultData.growth_track
-    );
+    ]);
 
-    return this.findByUserId(userId)!;
+    return (await this.findByUserId(userId))!;
   }
 
   /**
    * 根据用户 ID 查找画像
    */
-  findByUserId(userId: string): UserPortrait | null {
-    return this.db.prepare(
-      'SELECT * FROM user_portraits WHERE user_id = ? ORDER BY version DESC LIMIT 1'
-    ).get(userId) as UserPortrait | null;
+  async findByUserId(userId: string): Promise<UserPortrait | null> {
+    return await this.queryOne<UserPortrait>('SELECT * FROM user_portraits WHERE user_id = ? ORDER BY version DESC LIMIT 1', [userId]);
   }
 
   /**
    * 根据 ID 查找画像
    */
-  findById(id: number): UserPortrait | null {
-    return this.db.prepare('SELECT * FROM user_portraits WHERE id = ?').get(id) as UserPortrait | null;
+  async findById(id: number): Promise<UserPortrait | null> {
+    return await this.queryOne<UserPortrait>('SELECT * FROM user_portraits WHERE id = ?', [id]);
   }
 
   /**
    * 更新画像
    */
-  update(userId: string, fields: Partial<Omit<CreatePortraitInput, 'user_id'>>): UserPortrait {
+  async update(userId: string, fields: Partial<Omit<CreatePortraitInput, 'user_id'>>): Promise<UserPortrait> {
     const setClauses: string[] = [];
     const values: any[] = [];
 
@@ -149,26 +141,26 @@ export class PortraitRepository {
 
     if (setClauses.length > 0) {
       // 获取当前版本号
-      const current = this.findByUserId(userId);
+      const current = await this.findByUserId(userId);
       const newVersion = current ? current.version + 1 : 1;
 
       setClauses.push('version = ?');
       values.push(newVersion);
 
-      setClauses.push("updated_at = datetime('now')");
+      setClauses.push(`updated_at = ${getNowSql()}`);
       values.push(userId);
 
-      this.db.prepare(`UPDATE user_portraits SET ${setClauses.join(', ')} WHERE user_id = ?`).run(...values);
+      await this.runUpdate(`UPDATE user_portraits SET ${setClauses.join(', ')} WHERE user_id = ?`, values);
     }
 
-    return this.findByUserId(userId)!;
+    return (await this.findByUserId(userId))!;
   }
 
   /**
    * 记录能力变化
    */
-  recordAbilityChange(userId: string, ability: string, oldValue: number, newValue: number, reason: string): void {
-    const portrait = this.findByUserId(userId);
+  async recordAbilityChange(userId: string, ability: string, oldValue: number, newValue: number, reason: string): Promise<void> {
+    const portrait = await this.findByUserId(userId);
     if (!portrait) return;
 
     const growthTrack = portrait.growth_track ? JSON.parse(portrait.growth_track) : { abilityTrend: [] };
@@ -181,14 +173,14 @@ export class PortraitRepository {
       reason,
     });
 
-    this.update(userId, { growth_track: JSON.stringify(growthTrack) });
+    await this.update(userId, { growth_track: JSON.stringify(growthTrack) });
   }
 
   /**
    * 记录决策质量
    */
-  recordDecisionQuality(userId: string, decision: string, quality: number, outcome?: string): void {
-    const portrait = this.findByUserId(userId);
+  async recordDecisionQuality(userId: string, decision: string, quality: number, outcome?: string): Promise<void> {
+    const portrait = await this.findByUserId(userId);
     if (!portrait) return;
 
     const growthTrack = portrait.growth_track ? JSON.parse(portrait.growth_track) : { decisionQuality: [] };
@@ -200,14 +192,14 @@ export class PortraitRepository {
       outcome,
     });
 
-    this.update(userId, { growth_track: JSON.stringify(growthTrack) });
+    await this.update(userId, { growth_track: JSON.stringify(growthTrack) });
   }
 
   /**
    * 记录认知升级
    */
-  recordCognitionUpgrade(userId: string, description: string, trigger: string): void {
-    const portrait = this.findByUserId(userId);
+  async recordCognitionUpgrade(userId: string, description: string, trigger: string): Promise<void> {
+    const portrait = await this.findByUserId(userId);
     if (!portrait) return;
 
     const growthTrack = portrait.growth_track ? JSON.parse(portrait.growth_track) : { cognitionUpgrades: [] };
@@ -218,14 +210,14 @@ export class PortraitRepository {
       trigger,
     });
 
-    this.update(userId, { growth_track: JSON.stringify(growthTrack) });
+    await this.update(userId, { growth_track: JSON.stringify(growthTrack) });
   }
 
   /**
    * 删除画像
    */
-  delete(userId: string): boolean {
-    const result = this.db.prepare('DELETE FROM user_portraits WHERE user_id = ?').run(userId);
-    return result.changes > 0;
+  async delete(userId: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM user_portraits WHERE user_id = ?', [userId]);
+    return result > 0;
   }
 }

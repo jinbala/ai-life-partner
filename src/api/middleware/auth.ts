@@ -6,6 +6,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../../utils/logger';
 import { getDatabase } from '../../database';
+import { getNowSql } from '../../database/BaseRepository';
 import { jwtService, JwtTokenPayload } from '../../services/jwt';
 
 /**
@@ -180,7 +181,7 @@ export function refreshToken(req: Request, res: Response) {
 
 /**
  * 速率限制器（数据库存储版本）
- * 使用 better-sqlite3 进行持久化存储
+ * 使用数据库进行持久化存储
  */
 const rateLimitOptions = {
   windowMs: 60 * 1000, // 默认 1 分钟
@@ -188,14 +189,15 @@ const rateLimitOptions = {
 };
 
 // 初始化速率限制表
-function initRateLimitTable() {
+async function initRateLimitTable() {
   try {
-    const db = getDatabase();
-    db.exec(`
+    const db = await getDatabase();
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS rate_limits (
         identifier TEXT PRIMARY KEY,
         count INTEGER DEFAULT 0,
-        reset_at INTEGER NOT NULL
+        reset_at INTEGER NOT NULL,
+        updated_at TEXT DEFAULT ${getNowSql()}
       )
     `);
   } catch (error) {
@@ -219,7 +221,7 @@ export function rateLimit(options?: {
   // 尝试初始化数据库表
   initRateLimitTable();
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const identifier = keyGenerator(req);
     const now = Date.now();
     const resetAt = now + windowMs;
@@ -229,11 +231,14 @@ export function rateLimit(options?: {
 
     // 尝试使用数据库存储
     try {
-      const db = getDatabase();
+      const db = await getDatabase();
       useDatabase = true;
 
       // 获取或创建记录
-      const row = db.prepare('SELECT count, reset_at FROM rate_limits WHERE identifier = ?').get(identifier) as { count: number; reset_at: number } | undefined;
+      const row = await db.queryOne<{ count: number; reset_at: number }>(
+        'SELECT count, reset_at FROM rate_limits WHERE identifier = ?',
+        [identifier]
+      );
 
       if (row) {
         record = { count: row.count, resetAt: row.reset_at };
@@ -242,7 +247,10 @@ export function rateLimit(options?: {
       // 如果窗口已过期，重置计数
       if (!record || now > record.resetAt) {
         record = { count: 0, resetAt };
-        db.prepare('INSERT OR REPLACE INTO rate_limits (identifier, count, reset_at) VALUES (?, ?, ?)').run(identifier, 0, resetAt);
+        await db.execute(
+          'INSERT OR REPLACE INTO rate_limits (identifier, count, reset_at) VALUES (?, ?, ?)',
+          [identifier, 0, resetAt]
+        );
       }
     } catch (error) {
       // 数据库不可用，回退到内存存储
@@ -261,8 +269,8 @@ export function rateLimit(options?: {
     // 更新存储
     try {
       if (useDatabase) {
-        const db = getDatabase();
-        db.prepare('UPDATE rate_limits SET count = ? WHERE identifier = ?').run(record!.count, identifier);
+        const db = await getDatabase();
+        await db.execute('UPDATE rate_limits SET count = ? WHERE identifier = ?', [record!.count, identifier]);
       }
     } catch (error) {
       // 忽略更新失败，继续使用内存中的计数

@@ -2,8 +2,7 @@
  * 决策记录数据仓库
  */
 
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface Decision {
   id: string;
@@ -19,7 +18,7 @@ export interface Decision {
   lesson_learned: string | null;
   status: 'pending' | 'completed' | 'reviewed';
   verify_date: string | null;
-  reminded: boolean;
+  reminded: number;
   created_at: string;
   updated_at: string;
 }
@@ -35,24 +34,18 @@ export interface CreateDecisionInput {
   verify_date?: string;
 }
 
-export class DecisionRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    this.db = getDatabase();
-  }
-
+export class DecisionRepository extends BaseRepository {
   /**
    * 创建决策记录
    */
-  create(input: CreateDecisionInput): Decision {
+  async create(input: CreateDecisionInput): Promise<Decision> {
     const id = `dec_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const now = new Date().toISOString();
 
-    this.db.prepare(`
+    await this.execute(`
       INSERT INTO decisions (id, user_id, topic, essence, options, chosen, reason, expected_outcome, status, verify_date, reminded, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, ?, ?)
-    `).run(
+    `, [
       id,
       input.user_id,
       input.topic,
@@ -64,91 +57,75 @@ export class DecisionRepository {
       input.verify_date || null,
       now,
       now
-    );
+    ]);
 
-    return this.findById(id)!;
+    return (await this.findById(id))!;
   }
 
   /**
    * 查找决策
    */
-  findById(id: string): Decision | null {
-    return this.db.prepare('SELECT * FROM decisions WHERE id = ?').get(id) as Decision | null;
+  async findById(id: string): Promise<Decision | null> {
+    return await this.queryOne<Decision>('SELECT * FROM decisions WHERE id = ?', [id]);
   }
 
   /**
    * 获取用户的所有决策
    */
-  findByUser(userId: string): Decision[] {
-    return this.db.prepare(
-      'SELECT * FROM decisions WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(userId) as Decision[];
+  async findByUser(userId: string): Promise<Decision[]> {
+    return await this.queryMany<Decision>('SELECT * FROM decisions WHERE user_id = ? ORDER BY created_at DESC', [userId]);
   }
 
   /**
    * 按状态获取决策
    */
-  findByStatus(userId: string, status: Decision['status']): Decision[] {
-    return this.db.prepare(
-      'SELECT * FROM decisions WHERE user_id = ? AND status = ? ORDER BY created_at DESC'
-    ).all(userId, status) as Decision[];
+  async findByStatus(userId: string, status: Decision['status']): Promise<Decision[]> {
+    return await this.queryMany<Decision>('SELECT * FROM decisions WHERE user_id = ? AND status = ? ORDER BY created_at DESC', [userId, status]);
   }
 
   /**
    * 获取待复盘的决策
    */
-  findPendingDecisions(userId: string): Decision[] {
+  async findPendingDecisions(userId: string): Promise<Decision[]> {
     const now = new Date().toISOString().split('T')[0];
-    return this.db.prepare(`
+    return await this.queryMany<Decision>(`
       SELECT * FROM decisions
       WHERE user_id = ? AND status = 'pending' AND verify_date <= ?
       ORDER BY verify_date ASC
-    `).all(userId, now) as Decision[];
+    `, [userId, now]);
   }
 
   /**
    * 更新决策状态
    */
-  updateStatus(id: string, status: Decision['status']): void {
-    this.db.prepare(`
-      UPDATE decisions
-      SET status = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(status, id);
+  async updateStatus(id: string, status: Decision['status']): Promise<void> {
+    await this.runUpdate(`UPDATE decisions SET status = ?, updated_at = ${getNowSql()} WHERE id = ?`, [status, id]);
   }
 
   /**
    * 完成决策闭环
    */
-  closeDecisionLoop(
+  async closeDecisionLoop(
     id: string,
     actual_outcome: string,
     deviation: string,
     lesson_learned: string
-  ): void {
-    this.db.prepare(`
-      UPDATE decisions
-      SET actual_outcome = ?, deviation = ?, lesson_learned = ?, status = 'reviewed', reminded = 1, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(actual_outcome, deviation, lesson_learned, id);
+  ): Promise<void> {
+    await this.runUpdate(`UPDATE decisions SET actual_outcome = ?, deviation = ?, lesson_learned = ?, status = 'reviewed', reminded = 1, updated_at = ${getNowSql()} WHERE id = ?`, [actual_outcome, deviation, lesson_learned, id]);
   }
 
   /**
    * 标记为已提醒
    */
-  markAsReminded(id: string): void {
-    this.db.prepare(`
-      UPDATE decisions
-      SET reminded = 1, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
+  async markAsReminded(id: string): Promise<void> {
+    await this.runUpdate(`UPDATE decisions SET reminded = 1, updated_at = ${getNowSql()} WHERE id = ?`, [id]);
   }
 
   /**
    * 删除决策
    */
-  delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM decisions WHERE id = ?').run(id);
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM decisions WHERE id = ?', [id]);
+    return result > 0;
   }
 }

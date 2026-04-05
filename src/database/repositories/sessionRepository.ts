@@ -2,8 +2,7 @@
  * 会话数据仓库
  */
 
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface Session {
   id: string;
@@ -31,20 +30,15 @@ export interface ConversationMessage {
 /**
  * 会话仓库
  */
-export class SessionRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    this.db = getDatabase();
-  }
-
+export class SessionRepository extends BaseRepository {
   /**
    * 创建或获取会话
    */
-  findOrCreate(userId: string): Session {
-    const existing = this.db.prepare(
-      'SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
-    ).get(userId) as Session | undefined;
+  async findOrCreate(userId: string): Promise<Session> {
+    const existing = await this.queryOne<Session>(
+      'SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
 
     if (existing) {
       return existing;
@@ -53,61 +47,65 @@ export class SessionRepository {
     const id = `session_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const now = new Date().toISOString();
 
-    this.db.prepare(`
+    const db = await this.getDb();
+    await db.execute(`
       INSERT INTO sessions (id, user_id, conversation_history, current_focus, has_pending_challenge, has_pending_decision_review, pending_decision_id, last_active_at, created_at)
       VALUES (?, ?, '[]', NULL, 0, 0, NULL, ?, ?)
-    `).run(id, userId, now, now);
+    `, [id, userId, now, now]);
 
-    return this.findById(id)!;
+    return await this.findById(id) as Session;
   }
 
   /**
    * 查找会话
    */
-  findById(id: string): Session | null {
-    const sql = 'SELECT * FROM sessions WHERE id = ?';
-    const session = this.db.prepare(sql).get(id) as Session | null;
-    return session;
+  async findById(id: string): Promise<Session | null> {
+    return await this.queryOne<Session>(
+      'SELECT * FROM sessions WHERE id = ?',
+      [id]
+    );
   }
 
   /**
    * 获取用户的会话
    */
-  findByUser(userId: string): Session | null {
-    const session = this.db.prepare(
-      'SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
-    ).get(userId) as Session | null;
-    return session;
+  async findByUser(userId: string): Promise<Session | null> {
+    return await this.queryOne<Session>(
+      'SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
   }
 
   /**
    * 创建或更新会话（upsert）
    * 注意：会先确保用户存在
    */
-  upsert(id: string, userId: string, fields: Partial<CreateSessionInput> & {
+  async upsert(id: string, userId: string, fields: Partial<CreateSessionInput> & {
     has_pending_challenge?: boolean;
     has_pending_decision_review?: boolean;
     pending_decision_id?: string;
-  }): void {
+  }): Promise<void> {
     const now = new Date().toISOString();
 
     // 确保用户存在（外键约束）
-    this.db.prepare(`INSERT OR IGNORE INTO users (id, open_id, created_at, updated_at) VALUES (?, ?, datetime('now'), datetime('now'))`).run(userId, userId);
+    const db = await this.getDb();
+    await db.execute(
+      `INSERT OR IGNORE INTO users (id, open_id, created_at, updated_at) VALUES (?, ?, ${getNowSql()}, ${getNowSql()})`,
+      [userId, userId]
+    );
 
-    const existing = this.findById(id);
+    const existing = await this.findById(id);
 
     if (existing) {
-      // 更新现有记录
-      this.update(id, fields);
+      await this.updateSession(id, fields);
     } else {
-      // 创建新记录
-      this.db.prepare(`
+      await db.execute(`
         INSERT INTO sessions (
           id, user_id, conversation_history, current_focus,
           has_pending_challenge, has_pending_decision_review, pending_decision_id,
           last_active_at, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
+      `, [
         id,
         userId,
         fields.conversation_history ? JSON.stringify(fields.conversation_history) : '[]',
@@ -117,18 +115,18 @@ export class SessionRepository {
         fields.pending_decision_id || null,
         now,
         now
-      );
+      ]);
     }
   }
 
   /**
-   * 更新会话
+   * 更新会话（内部方法）
    */
-  update(id: string, fields: Partial<CreateSessionInput> & {
+  private async updateSession(id: string, fields: Partial<CreateSessionInput> & {
     has_pending_challenge?: boolean;
     has_pending_decision_review?: boolean;
     pending_decision_id?: string;
-  }): void {
+  }): Promise<void> {
     const setClauses: string[] = [];
     const values: any[] = [];
 
@@ -154,28 +152,27 @@ export class SessionRepository {
     }
 
     if (setClauses.length > 0) {
-      setClauses.push("last_active_at = datetime('now')");
+      setClauses.push(`last_active_at = ${getNowSql()}`);
       values.push(id);
-      this.db.prepare(`UPDATE sessions SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+      await this.runUpdate(
+        `UPDATE sessions SET ${setClauses.join(', ')} WHERE id = ?`,
+        values
+      );
     }
   }
 
   /**
    * 更新最后活跃时间
    */
-  touch(id: string): void {
-    this.db.prepare(`
-      UPDATE sessions
-      SET last_active_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
+  async touch(id: string): Promise<void> {
+    await this.runUpdate(`UPDATE sessions SET last_active_at = ${getNowSql()} WHERE id = ?`, [id]);
   }
 
   /**
    * 获取对话历史
    */
-  getConversationHistory(id: string): ConversationMessage[] {
-    const session = this.findById(id);
+  async getConversationHistory(id: string): Promise<ConversationMessage[]> {
+    const session = await this.findById(id);
     if (!session || !session.conversation_history) {
       return [];
     }
@@ -189,8 +186,8 @@ export class SessionRepository {
   /**
    * 添加对话消息
    */
-  addMessage(id: string, role: 'user' | 'assistant', content: string, maxHistory: number = 10): void {
-    const history = this.getConversationHistory(id);
+  async addMessage(id: string, role: 'user' | 'assistant', content: string, maxHistory: number = 10): Promise<void> {
+    const history = await this.getConversationHistory(id);
     history.push({ role, content });
 
     // 限制历史消息数量
@@ -198,43 +195,50 @@ export class SessionRepository {
       history.shift();
     }
 
-    this.update(id, { conversation_history: history });
+    await this.updateSession(id, { conversation_history: history });
   }
 
   /**
    * 清除会话历史
    */
-  clearHistory(id: string): void {
-    this.update(id, { conversation_history: [], current_focus: null });
+  async clearHistory(id: string): Promise<void> {
+    await this.updateSession(id, { conversation_history: [], current_focus: null });
   }
 
   /**
    * 删除会话
    */
-  delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    return await this.deleteSession(id);
+  }
+
+  /**
+   * 删除会话
+   */
+  async deleteSession(id: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM sessions WHERE id = ?', [id]);
+    return result > 0;
   }
 
   /**
    * 清理过期会话（30 分钟未活跃）
    */
-  cleanupExpired(timeoutMinutes: number = 30): number {
+  async cleanupExpired(timeoutMinutes: number = 30): Promise<number> {
     const timeoutMs = timeoutMinutes * 60 * 1000;
     const now = Date.now();
 
-    const sessions = this.db.prepare(`
-      SELECT id, last_active_at FROM sessions
-    `).all() as Array<{ id: string; last_active_at: string }>;
+    const sessions = await this.queryMany<{ id: string; last_active_at: string }>(
+      'SELECT id, last_active_at FROM sessions'
+    );
 
     let deleted = 0;
-    sessions.forEach(session => {
+    for (const session of sessions) {
       const lastActive = new Date(session.last_active_at).getTime();
       if (now - lastActive > timeoutMs) {
-        this.delete(session.id);
+        await this.deleteSession(session.id);
         deleted++;
       }
-    });
+    }
 
     return deleted;
   }

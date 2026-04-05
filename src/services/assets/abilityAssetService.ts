@@ -41,7 +41,7 @@ export class AbilityAssetService {
   /**
    * 加载所有资产
    */
-  load(): Record<AssetType, AbilityAsset[]> {
+  async load(): Promise<Record<AssetType, AbilityAsset[]>> {
     if (this.cache) {
       return {
         framework: this.cache.get('framework') || [],
@@ -52,7 +52,7 @@ export class AbilityAssetService {
       };
     }
 
-    const records = this.repository.findByUser(this.userId);
+    const records = await this.repository.findByUser(this.userId);
     const assets: Record<AssetType, AbilityAsset[]> = {
       framework: [],
       lesson: [],
@@ -88,13 +88,13 @@ export class AbilityAssetService {
   /**
    * 手动保存资产
    */
-  manualSave(type: string, content: string): AbilityAsset {
+  async manualSave(type: string, content: string): Promise<AbilityAsset> {
     const assetType = this.parseAssetType(type);
     if (!assetType) {
       throw new Error(`不支持的资产类型：${type}`);
     }
 
-    const record = this.repository.create({
+    const record = await this.repository.create({
       user_id: this.userId,
       type: assetType,
       title: content.slice(0, 50),
@@ -118,8 +118,8 @@ export class AbilityAssetService {
   /**
    * 搜索资产
    */
-  search(keywords: string[]): AbilityAsset[] {
-    const records = this.repository.search(this.userId, keywords);
+  async search(keywords: string[]): Promise<AbilityAsset[]> {
+    const records = await this.repository.search(this.userId, keywords);
     return records.map(r => ({
       id: r.id,
       type: r.type as AssetType,
@@ -145,8 +145,8 @@ export class AbilityAssetService {
   /**
    * 获取资产摘要
    */
-  getSummary(): string {
-    const assets = this.load();
+  async getSummary(): Promise<string> {
+    const assets = await this.load();
     const total = Object.values(assets).flat().length;
     if (total === 0) return '暂无能力资产';
 
@@ -160,17 +160,17 @@ export class AbilityAssetService {
   /**
    * 增加使用次数
    */
-  incrementUsage(assetId: string): void {
-    this.repository.incrementUsage(assetId);
+  async incrementUsage(assetId: string): Promise<void> {
+    await this.repository.incrementUsage(assetId);
     this.cache = null;
   }
 
   /**
    * 删除资产
    */
-  delete(assetId: string): boolean {
+  async delete(assetId: string): Promise<boolean> {
     this.cache = null;
-    return this.repository.delete(assetId);
+    return await this.repository.delete(assetId);
   }
 
   /**

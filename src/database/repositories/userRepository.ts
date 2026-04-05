@@ -2,86 +2,68 @@
  * 用户数据仓库
  */
 
-import path from 'path';
-import { logger } from '../../utils/logger';
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
-
-const DB_PATH = path.join(__dirname, '../../data/app.db');
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface User {
   id: string;
   open_id: string;
   created_at: string;
   updated_at: string;
-  morning_push_enabled: boolean;
-  review_reminder_enabled: boolean;
+  morning_push_enabled: number;
+  review_reminder_enabled: number;
 }
 
 export interface CreateUserInput {
   open_id: string;
 }
 
-export class UserRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    // 确保 data 目录存在
-    const fs = require('fs');
-    const dataDir = path.join(__dirname, '../../data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    // 使用共享的数据库实例
-    this.db = getDatabase();
-  }
-
+export class UserRepository extends BaseRepository {
   /**
    * 创建或获取用户
    */
-  findOrCreate(openId: string): User {
-    const existing = this.db.prepare('SELECT * FROM users WHERE open_id = ?').get(openId) as User | undefined;
+  async findOrCreate(openId: string): Promise<User> {
+    const existing = await this.queryOne<User>(
+      'SELECT * FROM users WHERE open_id = ?',
+      [openId]
+    );
+
     if (existing) {
       return existing;
     }
 
     const id = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-    this.db.prepare(`
-      INSERT INTO users (id, open_id, morning_push_enabled, review_reminder_enabled)
-      VALUES (?, ?, 1, 1)
-    `).run(id, openId);
+    const now = new Date().toISOString();
 
-    logger.info('[UserRepository] 创建新用户', { id, openId });
+    await this.execute(
+      `INSERT INTO users (id, open_id, morning_push_enabled, review_reminder_enabled, created_at, updated_at)
+       VALUES (?, ?, 1, 1, ?, ?)`,
+      [id, openId, now, now]
+    );
 
-    return {
-      id,
-      open_id: openId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      morning_push_enabled: true,
-      review_reminder_enabled: true,
-    };
+    return await this.findById(id) as User;
   }
 
   /**
    * 根据 ID 查找用户
    */
-  findById(id: string): User | null {
-    return this.db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | null;
+  async findById(id: string): Promise<User | null> {
+    return await this.queryOne<User>('SELECT * FROM users WHERE id = ?', [id]);
   }
 
   /**
    * 根据 open_id 查找用户
    */
-  findByOpenId(openId: string): User | null {
-    return this.db.prepare('SELECT * FROM users WHERE open_id = ?').get(openId) as User | null;
+  async findByOpenId(openId: string): Promise<User | null> {
+    return await this.queryOne<User>('SELECT * FROM users WHERE open_id = ?', [openId]);
   }
 
   /**
    * 更新用户设置
    */
-  updateSettings(id: string, settings: Partial<Pick<User, 'morning_push_enabled' | 'review_reminder_enabled'>>): void {
+  async updateSettings(
+    id: string,
+    settings: Partial<Pick<User, 'morning_push_enabled' | 'review_reminder_enabled'>>
+  ): Promise<void> {
     const fields: string[] = [];
     const values: any[] = [];
 
@@ -96,40 +78,39 @@ export class UserRepository {
     }
 
     if (fields.length > 0) {
-      fields.push("updated_at = datetime('now')");
+      fields.push(`updated_at = ${getNowSql()}`);
       values.push(id);
 
-      this.db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-      logger.info('[UserRepository] 更新用户设置', { id, settings });
+      await this.runUpdate(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
     }
   }
 
   /**
    * 获取所有用户
    */
-  findAll(): User[] {
-    return this.db.prepare('SELECT * FROM users ORDER BY created_at DESC').all() as User[];
+  async findAll(): Promise<User[]> {
+    return await this.queryMany<User>('SELECT * FROM users ORDER BY created_at DESC');
   }
 
   /**
    * 获取启用早上推送的用户
    */
-  findWithMorningPushEnabled(): User[] {
-    return this.db.prepare('SELECT * FROM users WHERE morning_push_enabled = 1').all() as User[];
+  async findWithMorningPushEnabled(): Promise<User[]> {
+    return await this.queryMany<User>('SELECT * FROM users WHERE morning_push_enabled = 1');
   }
 
   /**
    * 获取启用复盘提醒的用户
    */
-  findWithReviewReminderEnabled(): User[] {
-    return this.db.prepare('SELECT * FROM users WHERE review_reminder_enabled = 1').all() as User[];
+  async findWithReviewReminderEnabled(): Promise<User[]> {
+    return await this.queryMany<User>('SELECT * FROM users WHERE review_reminder_enabled = 1');
   }
 
   /**
    * 删除用户
    */
-  delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM users WHERE id = ?').run(id);
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM users WHERE id = ?', [id]);
+    return result > 0;
   }
 }

@@ -3,7 +3,7 @@
  */
 
 export { default as healthRoutes } from './health';
-export { default as chatRoutes } from './chat';
+export { chatRoutes } from './chat';
 export { default as feishuRoutes } from './feishu';
 export { visualizationRoutes } from './visualization';
 export { authRoutes } from './auth';

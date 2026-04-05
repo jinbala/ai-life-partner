@@ -36,13 +36,13 @@ export class SessionService {
   /**
    * 获取或创建会话
    */
-  getOrCreate(userId: string): SessionData {
+  async getOrCreate(userId: string): Promise<SessionData> {
     const cached = this.cache.get(userId);
     if (cached) {
       return cached;
     }
 
-    const session = this.repository.findOrCreate(userId);
+    const session = await this.repository.findOrCreate(userId);
     const data = this.mapToSessionData(session);
     this.cache.set(userId, data);
     return data;
@@ -51,13 +51,13 @@ export class SessionService {
   /**
    * 获取会话
    */
-  getSession(userId: string): SessionData | null {
+  async getSession(userId: string): Promise<SessionData | null> {
     const cached = this.cache.get(userId);
     if (cached) {
       return cached;
     }
 
-    const session = this.repository.findByUser(userId);
+    const session = await this.repository.findByUser(userId);
     if (!session) {
       return null;
     }
@@ -70,8 +70,8 @@ export class SessionService {
   /**
    * 更新会话
    */
-  update(userId: string, fields: Partial<SessionData>): void {
-    const session = this.repository.findByUser(userId);
+  async update(userId: string, fields: Partial<SessionData>): Promise<void> {
+    const session = await this.repository.findByUser(userId);
     if (!session) return;
 
     const updateData: any = {};
@@ -92,7 +92,7 @@ export class SessionService {
       updateData.pending_decision_id = fields.pendingDecisionId;
     }
 
-    this.repository.update(session.id, updateData);
+    await this.repository.upsert(session.id, userId, updateData);
 
     // 更新缓存
     const cached = this.cache.get(userId);
@@ -104,11 +104,11 @@ export class SessionService {
   /**
    * 添加对话消息
    */
-  addMessage(userId: string, role: 'user' | 'assistant', content: string): void {
-    const session = this.repository.findByUser(userId);
+  async addMessage(userId: string, role: 'user' | 'assistant', content: string): Promise<void> {
+    const session = await this.repository.findByUser(userId);
     if (!session) return;
 
-    this.repository.addMessage(session.id, role, content);
+    await this.repository.addMessage(session.id, role, content);
 
     // 更新缓存
     const cached = this.cache.get(userId);
@@ -120,7 +120,7 @@ export class SessionService {
     }
 
     // 检查是否需要生成摘要
-    this.maybeGenerateSummary(userId, session.id);
+    await this.maybeGenerateSummary(userId, session.id);
   }
 
   /**
@@ -178,7 +178,7 @@ ${historyText}
       });
 
       // 更新会话摘要
-      this.update(userId, {
+      await this.update(userId, {
         summary: response.content,
         summaryUpdatedAt: Date.now(),
       } as any);
@@ -196,30 +196,30 @@ ${historyText}
   /**
    * 清除会话
    */
-  clear(userId: string): void {
-    const session = this.repository.findByUser(userId);
+  async clear(userId: string): Promise<void> {
+    const session = await this.repository.findByUser(userId);
     if (!session) return;
 
-    this.repository.clearHistory(session.id);
+    await this.repository.clearHistory(session.id);
     this.cache.delete(userId);
   }
 
   /**
    * 删除会话
    */
-  delete(userId: string): boolean {
-    const session = this.repository.findByUser(userId);
+  async delete(userId: string): Promise<boolean> {
+    const session = await this.repository.findByUser(userId);
     if (!session) return false;
 
     this.cache.delete(userId);
-    return this.repository.delete(session.id);
+    return await this.repository.delete(session.id);
   }
 
   /**
    * 清理过期会话
    */
-  cleanupExpired(timeoutMinutes: number = 30): number {
-    const deleted = this.repository.cleanupExpired(timeoutMinutes);
+  async cleanupExpired(timeoutMinutes: number = 30): Promise<number> {
+    const deleted = await this.repository.cleanupExpired(timeoutMinutes);
     this.cache.clear();
     return deleted;
   }
@@ -253,8 +253,8 @@ ${historyText}
       userId: session.user_id,
       conversationHistory,
       currentFocus: session.current_focus,
-      hasPendingChallenge: session.has_pending_challenge,
-      hasPendingDecisionReview: session.has_pending_decision_review,
+      hasPendingChallenge: session.has_pending_challenge === 1,
+      hasPendingDecisionReview: session.has_pending_decision_review === 1,
       pendingDecisionId: session.pending_decision_id,
     };
   }

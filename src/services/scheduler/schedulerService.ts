@@ -93,7 +93,7 @@ export class SchedulerService {
   private async sendMorningPush(): Promise<void> {
     logger.info('[MorningPush] 开始发送早上推送...');
 
-    const users = this.userRepository.findWithMorningPushEnabled();
+    const users = await this.userRepository.findWithMorningPushEnabled();
     const today = new Date();
     const dateStr = today.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
 
@@ -103,8 +103,8 @@ export class SchedulerService {
     for (const user of users) {
       try {
         const goals = new GoalService(user.id);
-        const goalSummary = goals.getSummary();
-        const tasks = goals.getTodayTasks();
+        const goalSummary = await goals.getSummary();
+        const tasks = await goals.getTodayTasks();
 
         let content = `☀️ 早上好！${dateStr}\n\n`;
 
@@ -137,7 +137,7 @@ export class SchedulerService {
   private async sendReviewReminder(): Promise<void> {
     logger.info('[ReviewReminder] 开始发送复盘提醒...');
 
-    const users = this.userRepository.findWithReviewReminderEnabled();
+    const users = await this.userRepository.findWithReviewReminderEnabled();
 
     for (const user of users) {
       try {

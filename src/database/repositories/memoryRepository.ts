@@ -2,8 +2,7 @@
  * 记忆数据仓库
  */
 
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface Memory {
   id: string;
@@ -25,24 +24,18 @@ export interface CreateMemoryInput {
   expires_at?: string;
 }
 
-export class MemoryRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    this.db = getDatabase();
-  }
-
+export class MemoryRepository extends BaseRepository {
   /**
    * 创建记忆
    */
-  create(input: CreateMemoryInput): Memory {
+  async create(input: CreateMemoryInput): Promise<Memory> {
     const id = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     const now = new Date().toISOString();
 
-    this.db.prepare(`
+    await this.execute(`
       INSERT INTO memories (id, user_id, type, content, importance, recall_count, expires_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
-    `).run(
+    `, [
       id,
       input.user_id,
       input.type,
@@ -51,91 +44,72 @@ export class MemoryRepository {
       input.expires_at || null,
       now,
       now
-    );
+    ]);
 
-    return this.findById(id)!;
+    return (await this.findById(id))!;
   }
 
   /**
    * 查找记忆
    */
-  findById(id: string): Memory | null {
-    return this.db.prepare('SELECT * FROM memories WHERE id = ?').get(id) as Memory | null;
+  async findById(id: string): Promise<Memory | null> {
+    return await this.queryOne<Memory>('SELECT * FROM memories WHERE id = ?', [id]);
   }
 
   /**
    * 获取用户的所有记忆
    */
-  findByUser(userId: string): Memory[] {
-    return this.db.prepare(
-      'SELECT * FROM memories WHERE user_id = ? ORDER BY importance DESC, created_at DESC'
-    ).all(userId) as Memory[];
+  async findByUser(userId: string): Promise<Memory[]> {
+    return await this.queryMany<Memory>('SELECT * FROM memories WHERE user_id = ? ORDER BY importance DESC, created_at DESC', [userId]);
   }
 
   /**
    * 按类型获取记忆
    */
-  findByType(userId: string, type: Memory['type']): Memory[] {
-    return this.db.prepare(
-      'SELECT * FROM memories WHERE user_id = ? AND type = ? ORDER BY created_at DESC'
-    ).all(userId, type) as Memory[];
+  async findByType(userId: string, type: Memory['type']): Promise<Memory[]> {
+    return await this.queryMany<Memory>('SELECT * FROM memories WHERE user_id = ? AND type = ? ORDER BY created_at DESC', [userId, type]);
   }
 
   /**
    * 搜索记忆（按内容关键词）
    */
-  search(userId: string, keywords: string[]): Memory[] {
+  async search(userId: string, keywords: string[]): Promise<Memory[]> {
     if (keywords.length === 0) return [];
 
     const conditions = keywords.map(() => 'content LIKE ?').join(' OR ');
     const params = [userId, ...keywords.map(k => `%${k}%`)];
 
-    return this.db.prepare(`
-      SELECT * FROM memories
-      WHERE user_id = ? AND (${conditions})
-      ORDER BY importance DESC, recall_count DESC
-    `).all(...params) as Memory[];
+    return await this.queryMany<Memory>(`SELECT * FROM memories WHERE user_id = ? AND (${conditions}) ORDER BY importance DESC, recall_count DESC`, params);
   }
 
   /**
    * 增加记忆召回次数
    */
-  incrementRecall(id: string): void {
-    this.db.prepare(`
-      UPDATE memories
-      SET recall_count = recall_count + 1, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
+  async incrementRecall(id: string): Promise<void> {
+    await this.runUpdate(`UPDATE memories SET recall_count = recall_count + 1, updated_at = ${getNowSql()} WHERE id = ?`, [id]);
   }
 
   /**
    * 更新记忆重要性
    */
-  updateImportance(id: string, importance: number): void {
-    this.db.prepare(`
-      UPDATE memories
-      SET importance = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(Math.min(10, Math.max(1, importance)), id);
+  async updateImportance(id: string, importance: number): Promise<void> {
+    await this.runUpdate(`UPDATE memories SET importance = ?, updated_at = ${getNowSql()} WHERE id = ?`, [Math.min(10, Math.max(1, importance)), id]);
   }
 
   /**
    * 删除记忆
    */
-  delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM memories WHERE id = ?').run(id);
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM memories WHERE id = ?', [id]);
+    return result > 0;
   }
 
   /**
    * 删除过期记忆
    */
-  deleteExpired(): number {
+  async deleteExpired(): Promise<number> {
     const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      DELETE FROM memories
-      WHERE expires_at IS NOT NULL AND expires_at < ?
-    `).run(now);
-    return result.changes;
+    const result = await this.runDelete('DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < ?', [now]);
+    return result;
   }
 }

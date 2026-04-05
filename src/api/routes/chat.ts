@@ -25,8 +25,8 @@ interface ChatSession {
 /**
  * 获取或创建聊天会话
  */
-function getChatSession(sessionId: string, userId?: string): ChatSession {
-  const sessionData = sessionManager.getOrCreateSession(sessionId, userId || 'anonymous');
+async function getChatSession(sessionId: string, userId?: string): Promise<ChatSession> {
+  const sessionData = await sessionManager.getOrCreateSession(sessionId, userId || 'anonymous');
 
   if (!sessionData.metadata.chatSession) {
     sessionData.metadata.chatSession = {
@@ -62,7 +62,7 @@ router.post('/message', optionalAuth, async (req: Request, res: Response) => {
     const tokenUserId = (req as any).userId;
     const { userId: bodyUserId, sessionId, message } = validation.data!;
     const userId = tokenUserId || bodyUserId || 'anonymous';
-    const session = getChatSession(sessionId, userId);
+    const session = await getChatSession(sessionId, userId);
     const { conversationHistory, currentFocus } = session;
 
     logger.debug('[Chat] 获取会话', {
@@ -81,47 +81,44 @@ router.post('/message', optionalAuth, async (req: Request, res: Response) => {
     }
 
     // 生成系统提示
-    const systemPrompt = generateSystemPrompt({ currentFocus });
-
-    // 构建消息
-    const messages: ChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      ...conversationHistory.map(h => ({ role: h.role, content: h.content }) as ChatMessage),
-    ];
+    const systemPrompt = await generateSystemPrompt({
+      currentFocus: session.currentFocus,
+    });
 
     // 调用 AI 服务
-    const response = await aiService.chat(messages, {
-      maxTokens: 500,
-      temperature: 0.1,
-    });
+    const aiResponse = await aiService.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        ...conversationHistory.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      ],
+      {
+        maxTokens: 2000,
+        temperature: 0.7,
+      }
+    );
 
-    // 添加 AI 回复到历史
-    conversationHistory.push({ role: 'assistant', content: response.content });
+    // 添加 AI 响应到历史
+    conversationHistory.push({ role: 'assistant', content: aiResponse.content });
 
-    // 保存到会话管理器
-    sessionManager.updateMetadata(sessionId, { chatSession: session });
-
-    logger.info('[Chat] 消息处理成功', {
-      sessionId,
-      messageLength: message.length,
-      responseLength: response.content.length,
-    });
+    // 保存到会话管理器（异步，不阻塞响应）
+    await sessionManager.addMessage(sessionId, 'user', message);
+    await sessionManager.addMessage(sessionId, 'assistant', aiResponse.content);
 
     res.json({
       success: true,
       data: {
-        message: response.content,
+        message: aiResponse.content,
         sessionId,
-        usage: response.usage,
+        conversationLength: conversationHistory.length,
       },
     });
   } catch (error) {
-    logger.error('[Chat] 消息处理失败', error as Error);
+    logger.error('[Chat] 处理消息失败', error);
     res.status(500).json({
       success: false,
       error: {
-        code: 'CHAT_ERROR',
-        message: (error as Error).message,
+        code: 'INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : String(error),
       },
     });
   }
@@ -130,27 +127,28 @@ router.post('/message', optionalAuth, async (req: Request, res: Response) => {
 /**
  * GET /chat/session/:sessionId
  * 获取会话历史
+ * 认证：可选
  */
-router.get('/session/:sessionId', (req: Request, res: Response) => {
+router.get('/session/:sessionId', optionalAuth, async (req: Request, res: Response) => {
   try {
     const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
-    const session = getChatSession(sessionId);
+    const sessionData = await sessionManager.getOrCreateSession(sessionId);
+    const conversation = sessionData.metadata.chatSession?.conversationHistory || [];
 
     res.json({
       success: true,
       data: {
         sessionId,
-        history: session.conversationHistory,
-        currentFocus: session.currentFocus,
+        conversation,
       },
     });
   } catch (error) {
-    logger.error('[Chat] 获取会话失败', error as Error);
+    logger.error('[Chat] 获取会话失败', error);
     res.status(500).json({
       success: false,
       error: {
-        code: 'SESSION_ERROR',
-        message: (error as Error).message,
+        code: 'INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : String(error),
       },
     });
   }
@@ -158,32 +156,30 @@ router.get('/session/:sessionId', (req: Request, res: Response) => {
 
 /**
  * DELETE /chat/session/:sessionId
- * 清空会话历史
+ * 删除会话
+ * 认证：可选
  */
-router.delete('/session/:sessionId', (req: Request, res: Response) => {
+router.delete('/session/:sessionId', optionalAuth, async (req: Request, res: Response) => {
   try {
     const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : req.params.sessionId;
-    const session = getChatSession(sessionId);
-
-    session.conversationHistory = [];
-    session.currentFocus = undefined;
-
-    sessionManager.updateMetadata(sessionId, { chatSession: session });
+    await sessionManager.deleteSession(sessionId);
 
     res.json({
       success: true,
-      message: '会话已清空',
+      data: {
+        sessionId,
+      },
     });
   } catch (error) {
-    logger.error('[Chat] 清空会话失败', error as Error);
+    logger.error('[Chat] 删除会话失败', error);
     res.status(500).json({
       success: false,
       error: {
-        code: 'SESSION_ERROR',
-        message: (error as Error).message,
+        code: 'INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : String(error),
       },
     });
   }
 });
 
-export default router;
+export { router as chatRoutes };

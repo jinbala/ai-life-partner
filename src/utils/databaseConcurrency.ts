@@ -3,8 +3,9 @@
  * 提供事务包装器和乐观锁机制
  */
 
-import Database from 'better-sqlite3';
 import { getDatabase } from '../database';
+import { getNowSql } from '../database/BaseRepository';
+import { IDatabase } from '../database/IDatabase';
 import { logger } from '../utils/logger';
 
 /**
@@ -80,22 +81,19 @@ const globalLock = new ConcurrencyLock();
 
 /**
  * 执行事务（带重试机制）
- * better-sqlite3 是同步操作，但可以通过重试处理 BUSY 错误
  */
-export function executeTransaction<T>(
-  operation: (db: Database.Database) => T,
+export async function executeTransaction<T>(
+  operation: (db: IDatabase) => Promise<T>,
   options: TransactionOptions = {}
-): T {
+): Promise<T> {
   const { timeout = 5000, retries = 3, onRetry } = options;
 
-  const db = getDatabase();
+  const db = await getDatabase();
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
-      // 开始事务
-      const transaction = db.transaction(operation);
-      return transaction(db);
+      return await db.transaction(() => operation(db));
     } catch (error: any) {
       lastError = error;
 
@@ -111,7 +109,7 @@ export function executeTransaction<T>(
 
         // 等待一段时间后重试（指数退避）
         const delay = Math.min(100 * Math.pow(2, attempt - 1), 1000);
-        Atomics.wait(new Int32Array(new ArrayBuffer(4)), 0, 0, delay);
+        await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
 
@@ -135,19 +133,17 @@ export class OptimisticLock {
    * @param updateFn 更新函数，接收当前记录，返回要更新的字段
    * @param versionField 版本字段名，默认 'version'
    */
-  static updateWithCheck<T extends { version?: number }>(
+  static async updateWithCheck<T extends { version?: number }>(
     tableName: string,
     id: string,
     updateFn: (record: T | null) => Partial<T>,
     versionField: string = 'version'
-  ): boolean {
-    const db = getDatabase();
+  ): Promise<boolean> {
+    const db = await getDatabase();
 
-    return executeTransaction(() => {
+    return await executeTransaction(async () => {
       // 获取当前记录
-      const current = db
-        .prepare(`SELECT * FROM ${tableName} WHERE id = ?`)
-        .get(id) as T | undefined;
+      const current = await db.queryOne<T>(`SELECT * FROM ${tableName} WHERE id = ?`, [id]);
 
       if (!current) {
         logger.warn('[OptimisticLock] 记录不存在', { tableName, id });
@@ -173,13 +169,12 @@ export class OptimisticLock {
         values.push(currentVersion);
       }
 
-      const result = db
-        .prepare(
-          `UPDATE ${tableName} SET ${setClause}${versionField ? `, updated_at = datetime('now')` : ''} WHERE id = ?${versionField ? ` AND ${versionField} = ?` : ''}`
-        )
-        .run(...values);
+      const result = await db.execute(
+        `UPDATE ${tableName} SET ${setClause}${versionField ? `, updated_at = ${getNowSql()}` : ''} WHERE id = ?${versionField ? ` AND ${versionField} = ?` : ''}`,
+        values
+      );
 
-      if (result.changes === 0) {
+      if ((result.affectedRows || 0) === 0) {
         logger.warn('[OptimisticLock] 并发冲突，更新失败', {
           tableName,
           id,
@@ -195,22 +190,22 @@ export class OptimisticLock {
   /**
    * 带重试的乐观锁更新
    */
-  static updateWithRetry<T extends { version?: number }>(
+  static async updateWithRetry<T extends { version?: number }>(
     tableName: string,
     id: string,
     updateFn: (record: T | null) => Partial<T>,
     maxRetries: number = 3,
     versionField: string = 'version'
-  ): boolean {
+  ): Promise<boolean> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      if (this.updateWithCheck(tableName, id, updateFn, versionField)) {
+      if (await this.updateWithCheck(tableName, id, updateFn, versionField)) {
         return true;
       }
 
       if (attempt < maxRetries) {
         // 等待随机时间后重试（减少冲突概率）
         const delay = Math.floor(Math.random() * 100) + 50 * (attempt - 1);
-        Atomics.wait(new Int32Array(new ArrayBuffer(4)), 0, 0, delay);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
 
@@ -249,10 +244,10 @@ export class ResourceLock {
   /**
    * 在锁保护下执行操作
    */
-  async execute<T>(operation: () => T, timeoutMs?: number): Promise<T> {
+  async execute<T>(operation: () => Promise<T>, timeoutMs?: number): Promise<T> {
     await this.acquire(timeoutMs);
     try {
-      return operation();
+      return await operation();
     } finally {
       this.release();
     }
@@ -280,7 +275,7 @@ export class DatabaseWriter {
   /**
    * 执行写操作（带锁保护）
    */
-  async write<T>(operation: () => T, timeoutMs: number = 5000): Promise<T> {
+  async write<T>(operation: () => Promise<T>, timeoutMs: number = 5000): Promise<T> {
     const lock = createResourceLock(this.resourceId);
     return lock.execute(operation, timeoutMs);
   }
@@ -288,7 +283,7 @@ export class DatabaseWriter {
   /**
    * 执行事务性写操作
    */
-  async transaction<T>(operation: (db: Database.Database) => T): Promise<T> {
-    return this.write(() => executeTransaction(operation));
+  async transaction<T>(operation: (db: IDatabase) => Promise<T>): Promise<T> {
+    return await this.write(() => executeTransaction(operation));
   }
 }

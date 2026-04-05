@@ -17,6 +17,8 @@ import {
 } from '../../database/repositories';
 import { SessionRepository } from '../../database/repositories/sessionRepository';
 import { logger } from '../../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface ExportData {
   exported_at: string;
@@ -65,29 +67,40 @@ export class DataExportService {
   /**
    * 导出用户所有数据
    */
-  exportUserData(userId: string): ExportData {
+  async exportUserData(userId: string): Promise<ExportData> {
     logger.info('[DataExport] 开始导出数据', { userId });
 
     try {
-      const user = this.userRepo.findById(userId);
+      const user = await this.userRepo.findById(userId);
       if (!user) {
         throw new Error('用户不存在');
       }
 
-      const portrait = this.portraitRepo.findByUserId(userId);
+      const portrait = await this.portraitRepo.findByUserId(userId);
+
+      const [goals, tasks, memories, abilities, decisions, challenges, reviews, tokenSummary] = await Promise.all([
+        this.goalRepo.findByUser(userId),
+        this.taskRepo.findByUser(userId),
+        this.memoryRepo.findByUser(userId),
+        this.abilityRepo.findByUser(userId),
+        this.decisionRepo.findByUser(userId),
+        this.challengeRepo.findByUser(userId),
+        this.reviewRepo.findByUser(userId),
+        this.tokenUsageRepo.getTotalSummary(userId),
+      ]);
 
       const data: ExportData = {
         exported_at: new Date().toISOString(),
         user: this.sanitizeUser(user),
         portraits: portrait ? [portrait] : [],
-        goals: this.goalRepo.findByUser(userId),
-        tasks: this.taskRepo.findByUser(userId),
-        memories: this.memoryRepo.findByUser(userId),
-        abilities: this.abilityRepo.findByUser(userId),
-        decisions: this.decisionRepo.findByUser(userId),
-        challenges: this.challengeRepo.findByUser(userId),
-        reviews: this.reviewRepo.findByUser(userId),
-        token_usage_summary: this.tokenUsageRepo.getTotalSummary(userId),
+        goals,
+        tasks,
+        memories,
+        abilities,
+        decisions,
+        challenges,
+        reviews,
+        token_usage_summary: tokenSummary,
       };
 
       logger.info('[DataExport] 导出完成', {
@@ -105,43 +118,53 @@ export class DataExportService {
 
       return data;
     } catch (error) {
-      logger.error('[DataExport] 导出失败', error);
+      logger.error('[DataExport] 导出失败', { userId, error });
       throw error;
     }
   }
 
   /**
-   * 导出所有用户数据（管理员功能）
+   * 导出所有用户数据（用于管理员备份）
    */
-  exportAllData(): ExportData & { users_count: number } {
+  async exportAllUsers(): Promise<ExportData[]> {
     logger.info('[DataExport] 开始导出所有用户数据');
 
-    const users = this.userRepo.findAll();
-    const allData = users.map(user => this.exportUserData(user.id));
+    const users = await this.userRepo.findAll();
+    const exports: ExportData[] = [];
 
+    for (const user of users) {
+      try {
+        const data = await this.exportUserData(user.id);
+        exports.push(data);
+      } catch (error) {
+        logger.error('[DataExport] 用户导出失败', { userId: user.id, error });
+      }
+    }
+
+    logger.info('[DataExport] 所有用户导出完成', { total: users.length, success: exports.length });
+    return exports;
+  }
+
+  /**
+   * 清理用户敏感信息
+   */
+  private sanitizeUser(user: any): any {
+    const { id, open_id, created_at, updated_at, morning_push_enabled, review_reminder_enabled } = user;
     return {
-      exported_at: new Date().toISOString(),
-      users_count: users.length,
-      user: null as any,
-      portraits: allData.flatMap(d => d.portraits),
-      goals: allData.flatMap(d => d.goals),
-      tasks: allData.flatMap(d => d.tasks),
-      memories: allData.flatMap(d => d.memories),
-      abilities: allData.flatMap(d => d.abilities),
-      decisions: allData.flatMap(d => d.decisions),
-      challenges: allData.flatMap(d => d.challenges),
-      reviews: allData.flatMap(d => d.reviews),
-      token_usage_summary: this.tokenUsageRepo.getTotalSummary(),
+      id,
+      open_id,
+      created_at,
+      updated_at,
+      morning_push_enabled,
+      review_reminder_enabled,
     };
   }
 
   /**
-   * 导出为 JSON 文件
+   * 导出数据到文件
    */
-  exportToFile(userId: string, filePath: string): void {
-    const data = this.exportUserData(userId);
-    const fs = require('fs');
-    const path = require('path');
+  async exportToFile(userId: string, filePath: string): Promise<string> {
+    const data = await this.exportUserData(userId);
 
     // 确保目录存在
     const dir = path.dirname(filePath);
@@ -149,52 +172,10 @@ export class DataExportService {
       fs.mkdirSync(dir, { recursive: true });
     }
 
+    // 写入文件
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
-    logger.info('[DataExport] 数据已导出到文件', { filePath });
-  }
 
-  /**
-   * 清理敏感信息
-   */
-  private sanitizeUser(user: any): any {
-    const { ...safeUser } = user;
-    // 移除可能的敏感字段
-    delete (safeUser as any).password;
-    delete (safeUser as any).token;
-    delete (safeUser as any).secret;
-    return safeUser;
-  }
-
-  /**
-   * 获取导出统计
-   */
-  getExportStats(): {
-    total_users: number;
-    total_records: {
-      portraits: number;
-      goals: number;
-      tasks: number;
-      memories: number;
-      abilities: number;
-      decisions: number;
-      challenges: number;
-      reviews: number;
-    };
-  } {
-    const db = require('../../database').getDatabase();
-
-    return {
-      total_users: this.userRepo.findAll().length,
-      total_records: {
-        portraits: db.prepare('SELECT COUNT(*) as count FROM user_portraits').get().count,
-        goals: db.prepare('SELECT COUNT(*) as count FROM goals').get().count,
-        tasks: db.prepare('SELECT COUNT(*) as count FROM daily_tasks').get().count,
-        memories: db.prepare('SELECT COUNT(*) as count FROM memories').get().count,
-        abilities: db.prepare('SELECT COUNT(*) as count FROM ability_assets').get().count,
-        decisions: db.prepare('SELECT COUNT(*) as count FROM decisions').get().count,
-        challenges: db.prepare('SELECT COUNT(*) as count FROM challenges').get().count,
-        reviews: db.prepare('SELECT COUNT(*) as count FROM reviews').get().count,
-      },
-    };
+    logger.info('[DataExport] 文件导出成功', { userId, filePath });
+    return filePath;
   }
 }

@@ -2,8 +2,7 @@
  * 能力资产数据仓库
  */
 
-import { getDatabase } from '../index';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { BaseRepository, getNowSql } from '../BaseRepository';
 
 export interface AbilityAsset {
   id: string;
@@ -25,90 +24,76 @@ export interface CreateAssetInput {
   tags?: string[];
 }
 
-export class AbilityAssetRepository {
-  private db: DatabaseType;
-
-  constructor() {
-    this.db = getDatabase();
-  }
-
+export class AbilityAssetRepository extends BaseRepository {
   /**
    * 创建能力资产
    */
-  create(input: CreateAssetInput): AbilityAsset {
+  async create(input: CreateAssetInput): Promise<AbilityAsset> {
     const id = `asset_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    this.db.prepare(`
+    await this.execute(`
       INSERT INTO ability_assets (id, user_id, type, title, content, tags, usage_count, last_used_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 0, NULL, datetime('now'))
-    `).run(
+      VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ${getNowSql()})
+    `, [
       id,
       input.user_id,
       input.type,
       input.title,
       input.content,
       input.tags ? JSON.stringify(input.tags) : null
-    );
+    ]);
 
-    return this.findById(id)!;
+    return (await this.findById(id))!;
   }
 
   /**
    * 查找资产
    */
-  findById(id: string): AbilityAsset | null {
-    return this.db.prepare('SELECT * FROM ability_assets WHERE id = ?').get(id) as AbilityAsset | null;
+  async findById(id: string): Promise<AbilityAsset | null> {
+    return await this.queryOne<AbilityAsset>('SELECT * FROM ability_assets WHERE id = ?', [id]);
   }
 
   /**
    * 获取用户的所有资产
    */
-  findByUser(userId: string): AbilityAsset[] {
-    return this.db.prepare(
-      'SELECT * FROM ability_assets WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(userId) as AbilityAsset[];
+  async findByUser(userId: string): Promise<AbilityAsset[]> {
+    return await this.queryMany<AbilityAsset>('SELECT * FROM ability_assets WHERE user_id = ? ORDER BY created_at DESC', [userId]);
   }
 
   /**
    * 按类型获取资产
    */
-  findByType(userId: string, type: AbilityAsset['type']): AbilityAsset[] {
-    return this.db.prepare(
-      'SELECT * FROM ability_assets WHERE user_id = ? AND type = ? ORDER BY created_at DESC'
-    ).all(userId, type) as AbilityAsset[];
+  async findByType(userId: string, type: AbilityAsset['type']): Promise<AbilityAsset[]> {
+    return await this.queryMany<AbilityAsset>('SELECT * FROM ability_assets WHERE user_id = ? AND type = ? ORDER BY created_at DESC', [userId, type]);
   }
 
   /**
    * 搜索资产（按标题或内容）
    */
-  search(userId: string, keywords: string[]): AbilityAsset[] {
+  async search(userId: string, keywords: string[]): Promise<AbilityAsset[]> {
     if (keywords.length === 0) return [];
 
     const conditions = keywords.map(k => '(title LIKE ? OR content LIKE ?)').join(' OR ');
     const params = [userId, ...keywords.flatMap(k => [`%${k}%`, `%${k}%`])];
 
-    return this.db.prepare(`
+    return await this.queryMany<AbilityAsset>(`
       SELECT * FROM ability_assets
       WHERE user_id = ? AND (${conditions})
       ORDER BY usage_count DESC, created_at DESC
-    `).all(...params) as AbilityAsset[];
+    `, params);
   }
 
   /**
    * 增加使用次数
    */
-  incrementUsage(id: string): void {
-    this.db.prepare(`
-      UPDATE ability_assets
-      SET usage_count = usage_count + 1, last_used_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
+  async incrementUsage(id: string): Promise<void> {
+    await this.runUpdate(`UPDATE ability_assets SET usage_count = usage_count + 1, last_used_at = ${getNowSql()} WHERE id = ?`, [id]);
   }
 
   /**
    * 更新资产
    */
-  update(id: string, fields: Partial<CreateAssetInput>): void {
+  async update(id: string, fields: Partial<CreateAssetInput>): Promise<void> {
     const setClauses: string[] = [];
     const values: any[] = [];
 
@@ -127,15 +112,15 @@ export class AbilityAssetRepository {
 
     if (setClauses.length > 0) {
       values.push(id);
-      this.db.prepare(`UPDATE ability_assets SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+      await this.runUpdate(`UPDATE ability_assets SET ${setClauses.join(', ')} WHERE id = ?`, values);
     }
   }
 
   /**
    * 删除资产
    */
-  delete(id: string): boolean {
-    const result = this.db.prepare('DELETE FROM ability_assets WHERE id = ?').run(id);
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    const result = await this.runDelete('DELETE FROM ability_assets WHERE id = ?', [id]);
+    return result > 0;
   }
 }
