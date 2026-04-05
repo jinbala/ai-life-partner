@@ -6,23 +6,17 @@
 import { Router, Request, Response } from 'express';
 import { UserRepository, PortraitRepository, GoalRepository, DailyTaskRepository, TokenUsageRepository } from '../../database/repositories';
 import { logger } from '../../utils/logger';
+import { sessionAuth } from '../middleware/auth';
 
 const router = Router();
 
 /**
  * 获取能力雷达图数据
- * GET /api/viz/ability-radar?userId=xxx
+ * GET /api/viz/ability-radar
+ * 需要认证：Bearer Token
  */
-router.get('/ability-radar', async (req: Request, res: Response) => {
-  const { userId } = req.query;
-
-  if (!userId) {
-    res.status(400).json({
-      success: false,
-      error: '缺少 userId 参数',
-    });
-    return;
-  }
+router.get('/ability-radar', sessionAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId;
 
   try {
     const portraitRepo = new PortraitRepository();
@@ -65,19 +59,13 @@ router.get('/ability-radar', async (req: Request, res: Response) => {
 
 /**
  * 获取能力成长曲线数据
- * GET /api/viz/ability-trend?userId=xxx&days=30
+ * GET /api/viz/ability-trend?days=30
+ * 需要认证：Bearer Token
  */
-router.get('/ability-trend', async (req: Request, res: Response) => {
-  const { userId, days } = req.query;
+router.get('/ability-trend', sessionAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId;
+  const { days } = req.query;
   const daysNum = days ? parseInt(days as string) : 90;
-
-  if (!userId) {
-    res.status(400).json({
-      success: false,
-      error: '缺少 userId 参数',
-    });
-    return;
-  }
 
   try {
     const portraitRepo = new PortraitRepository();
@@ -162,18 +150,11 @@ router.get('/ability-trend', async (req: Request, res: Response) => {
 
 /**
  * 获取目标进度数据
- * GET /api/viz/goal-progress?userId=xxx
+ * GET /api/viz/goal-progress
+ * 需要认证：Bearer Token
  */
-router.get('/goal-progress', async (req: Request, res: Response) => {
-  const { userId } = req.query;
-
-  if (!userId) {
-    res.status(400).json({
-      success: false,
-      error: '缺少 userId 参数',
-    });
-    return;
-  }
+router.get('/goal-progress', sessionAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId;
 
   try {
     const goalRepo = new GoalRepository();
@@ -231,18 +212,11 @@ router.get('/goal-progress', async (req: Request, res: Response) => {
 
 /**
  * 获取综合统计数据
- * GET /api/viz/dashboard?userId=xxx
+ * GET /api/viz/dashboard
+ * 需要认证：Bearer Token
  */
-router.get('/dashboard', async (req: Request, res: Response) => {
-  const { userId } = req.query;
-
-  if (!userId) {
-    res.status(400).json({
-      success: false,
-      error: '缺少 userId 参数',
-    });
-    return;
-  }
+router.get('/dashboard', sessionAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId;
 
   try {
     const portraitRepo = new PortraitRepository();

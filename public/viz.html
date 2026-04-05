@@ -255,6 +255,30 @@
       return userId;
     }
 
+    // 获取认证令牌
+    function getToken() {
+      return localStorage.getItem('ai_partner_token') || '';
+    }
+
+    // 带认证的 fetch 封装
+    async function fetchWithAuth(url, options = {}) {
+      const token = getToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      };
+      const response = await fetch(url, { ...options, headers });
+      // 如果 401 未授权，尝试清除令牌并重定向
+      if (response.status === 401) {
+        const data = await response.json().catch(() => ({}));
+        if (data.error?.code === 'UNAUTHORIZED') {
+          console.warn('认证失败，请登录后重试');
+        }
+      }
+      return response;
+    }
+
     // 全局图表实例
     let radarChartInstance = null;
     let trendChartInstance = null;
@@ -263,7 +287,7 @@
     async function loadDashboard() {
       const userId = getUserId();
       try {
-        const response = await fetch(`/api/viz/dashboard?userId=${userId}`);
+        const response = await fetchWithAuth(`/api/viz/dashboard`);
         const result = await response.json();
 
         if (result.success) {
@@ -374,9 +398,8 @@
 
     // 加载能力成长曲线
     async function loadTrendChart() {
-      const userId = getUserId();
       try {
-        const response = await fetch(`/api/viz/ability-trend?userId=${userId}&days=90`);
+        const response = await fetchWithAuth(`/api/viz/ability-trend?days=90`);
         const result = await response.json();
 
         if (result.success) {
@@ -470,9 +493,8 @@
 
     // 加载目标进度
     async function loadGoalProgress() {
-      const userId = getUserId();
       try {
-        const response = await fetch(`/api/viz/goal-progress?userId=${userId}`);
+        const response = await fetchWithAuth(`/api/viz/goal-progress`);
         const result = await response.json();
 
         if (result.success) {

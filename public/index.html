@@ -297,6 +297,11 @@
       return userId;
     }
 
+    // 获取认证令牌（如果已登录）
+    function getToken() {
+      return localStorage.getItem('ai_partner_token') || '';
+    }
+
     // 生成会话 ID（本地存储）
     function getSessionId() {
       let sessionId = localStorage.getItem('ai_partner_session_id');
@@ -364,10 +369,12 @@
 
       try {
         // 发送到聊天 API
+        const token = getToken();
         const response = await fetch('/chat/api/message', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
             userId: getUserId(),

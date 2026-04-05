@@ -9,6 +9,7 @@ import { generateSystemPrompt } from '../../services/ai/aiPersona';
 import { sessionManager } from '../../context/sessionManager';
 import { logger } from '../../utils/logger';
 import { validate, ChatMessageWithSessionSchema } from '../../utils/validators';
+import { optionalAuth } from '../middleware/auth';
 
 const router = Router();
 const aiService = new AIService();
@@ -40,8 +41,9 @@ function getChatSession(sessionId: string, userId?: string): ChatSession {
 /**
  * POST /chat/message
  * 发送消息并获取回复
+ * 认证：可选（Bearer Token）
  */
-router.post('/message', async (req: Request, res: Response) => {
+router.post('/message', optionalAuth, async (req: Request, res: Response) => {
   try {
     // 验证请求参数
     const validation = validate(ChatMessageWithSessionSchema, req.body);
@@ -56,7 +58,10 @@ router.post('/message', async (req: Request, res: Response) => {
       return;
     }
 
-    const { userId, sessionId, message } = validation.data!;
+    // 优先使用 token 中的 userId，如果没有则使用请求参数中的 userId
+    const tokenUserId = (req as any).userId;
+    const { userId: bodyUserId, sessionId, message } = validation.data!;
+    const userId = tokenUserId || bodyUserId || 'anonymous';
     const session = getChatSession(sessionId, userId);
     const { conversationHistory, currentFocus } = session;
 
