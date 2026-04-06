@@ -25,7 +25,7 @@ function getDbType(): 'sqlite' | 'mysql' {
  * 根据数据库类型获取当前时间函数
  */
 function getNowSql(): string {
-  return getDbType() === 'sqlite' ? "datetime('now')" : 'NOW()';
+  return getDbType() === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()';
 }
 
 /**
@@ -53,15 +53,6 @@ function getMigrations(): Migration[] {
         );
       `,
     },
-    {
-      version: 2,
-      name: 'add_user_profile_fields',
-      up: `
-        -- 添加更多用户画像字段
-        ALTER TABLE user_portraits ADD COLUMN basics_data TEXT;
-        ALTER TABLE user_portraits ADD COLUMN growth_track_data TEXT;
-      `,
-    },
   ];
 }
 
@@ -76,7 +67,7 @@ export async function runMigrations(): Promise<void> {
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version ${getDbType() === 'sqlite' ? 'INTEGER PRIMARY KEY' : 'INT PRIMARY KEY'},
       name ${getDbType() === 'sqlite' ? 'TEXT' : 'VARCHAR(255)'} NOT NULL,
-      applied_at ${getDbType() === 'sqlite' ? 'TEXT DEFAULT (datetime(\'now\'))' : 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'}
+      applied_at ${getDbType() === 'sqlite' ? 'TEXT' : 'TIMESTAMP'} DEFAULT ${getNowSql()}
     )
   `);
 
