@@ -333,6 +333,22 @@ async function handleUserMessage(
 
   await feishuMessageService.sendTextMessage(openId, response.content);
   await sessionService.addMessage(userId, 'assistant', response.content);
+
+  // 异步分析对话并更新画像（每 5 次对话分析一次）
+  const fullHistory = session.conversationHistory;
+  if (fullHistory.length % 5 === 0) {
+    userServices.evolution.analyzeAndUpdatePortrait(userId, fullHistory).then(result => {
+      if (result.portraitUpdates.length > 0 || result.newMemories.length > 0) {
+        logger.info('[Server] 画像进化分析完成', {
+          userId,
+          updates: result.portraitUpdates.length,
+          newMemories: result.newMemories.length,
+        });
+      }
+    }).catch(err => {
+      logger.warn('[Server] 画像进化分析失败', { userId, error: err.message });
+    });
+  }
 }
 
 /**

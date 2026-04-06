@@ -10,6 +10,7 @@ import { AbilityAssetService } from '../assets/abilityAssetService';
 import { DecisionFeedbackService } from '../decision/decisionFeedbackService';
 import { CognitionChallengeService } from '../growth/cognitionChallengeService';
 import { ReviewService } from '../growth/reviewService';
+import { PortraitEvolutionService } from './portraitEvolutionService';
 
 /**
  * 综合服务实例
@@ -22,6 +23,7 @@ export class UserService {
   public readonly decisions: DecisionFeedbackService;
   public readonly challenges: CognitionChallengeService;
   public readonly reviews: ReviewService;
+  public readonly evolution: PortraitEvolutionService;
 
   constructor(userId: string) {
     this.portrait = new PortraitService(userId);
@@ -31,6 +33,7 @@ export class UserService {
     this.decisions = new DecisionFeedbackService(userId);
     this.challenges = new CognitionChallengeService(userId);
     this.reviews = new ReviewService(userId);
+    this.evolution = new PortraitEvolutionService();
   }
 
   /**
@@ -70,5 +73,12 @@ export class UserService {
     this.portrait.clearCache();
     this.memories.clearCache();
     this.assets.clearCache();
+  }
+
+  /**
+   * 获取成长轨迹摘要
+   */
+  async getGrowthSummary(days: number = 30): Promise<string> {
+    return await this.evolution.getGrowthSummary(this.portrait['userId'], days);
   }
 }

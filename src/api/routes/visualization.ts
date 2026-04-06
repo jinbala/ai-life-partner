@@ -287,4 +287,36 @@ router.get('/dashboard', sessionAuth, async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/viz/growth-summary
+ * 获取成长轨迹摘要（画像进化服务）
+ * 需要认证：Bearer Token
+ */
+router.get('/growth-summary', sessionAuth, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
+  const days = parseInt((req.query.days as string) || '30');
+
+  try {
+    const { UserService } = await import('../../services/user');
+    const userServices = new UserService(userId);
+
+    const summary = await userServices.getGrowthSummary(days);
+
+    res.json({
+      success: true,
+      data: {
+        userId,
+        days,
+        summary,
+      },
+    });
+  } catch (error) {
+    logger.error('[Visualization] 获取成长摘要失败', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 export { router as visualizationRoutes };

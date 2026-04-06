@@ -138,6 +138,22 @@ router.post('/message', optionalAuth, async (req: Request, res: Response) => {
     await sessionManager.addMessage(sessionId, 'user', message);
     await sessionManager.addMessage(sessionId, 'assistant', aiResponse.content);
 
+    // 异步分析对话并更新画像（不阻塞响应）
+    // 每 5 次对话分析一次，减少 API 调用
+    if (conversationHistory.length % 5 === 0) {
+      userServices.evolution.analyzeAndUpdatePortrait(userId, conversationHistory).then(result => {
+        if (result.portraitUpdates.length > 0 || result.newMemories.length > 0) {
+          logger.info('[Chat] 画像进化分析完成', {
+            userId,
+            updates: result.portraitUpdates.length,
+            newMemories: result.newMemories.length,
+          });
+        }
+      }).catch(err => {
+        logger.warn('[Chat] 画像进化分析失败', { userId, error: err.message });
+      });
+    }
+
     res.json({
       success: true,
       data: {

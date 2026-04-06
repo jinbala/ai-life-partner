@@ -8,6 +8,7 @@ import type { ScheduledTask } from 'node-cron';
 import { UserRepository } from '../../database/repositories';
 import { FeishuMessageService } from '../../integrations/feishu';
 import { GoalService } from '../../services/user/goalService';
+import { PortraitEvolutionService } from '../../services/user/portraitEvolutionService';
 import { logger } from '../../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,14 +19,17 @@ import * as path from 'path';
 export class SchedulerService {
   private userRepository: UserRepository;
   private messageService: FeishuMessageService;
+  private portraitEvolution: PortraitEvolutionService;
   private morningPushJob: ScheduledTask | null = null;
   private reviewReminderJob: ScheduledTask | null = null;
   private databaseBackupJob: ScheduledTask | null = null;
+  private weeklyPortraitAnalysisJob: ScheduledTask | null = null;
   private backupDir: string;
 
   constructor() {
     this.userRepository = new UserRepository();
     this.messageService = new FeishuMessageService();
+    this.portraitEvolution = new PortraitEvolutionService();
     this.backupDir = path.join(process.cwd(), 'data', 'backups');
 
     // 确保备份目录存在
@@ -65,6 +69,15 @@ export class SchedulerService {
       timezone: 'Asia/Shanghai',
     });
 
+    // 每周一上午 10:00 执行画像分析（为活跃用户）
+    this.weeklyPortraitAnalysisJob = cron.schedule('0 10 * * 1', () => {
+      this.runWeeklyPortraitAnalysis().catch(err => {
+        logger.error('[Scheduler] 周画像分析失败', err);
+      });
+    }, {
+      timezone: 'Asia/Shanghai',
+    });
+
     logger.info('[Scheduler] 定时任务已启动');
   }
 
@@ -83,6 +96,10 @@ export class SchedulerService {
     if (this.databaseBackupJob) {
       this.databaseBackupJob.stop();
       this.databaseBackupJob = null;
+    }
+    if (this.weeklyPortraitAnalysisJob) {
+      this.weeklyPortraitAnalysisJob.stop();
+      this.weeklyPortraitAnalysisJob = null;
     }
     logger.info('[Scheduler] 定时任务已停止');
   }
@@ -225,6 +242,49 @@ export class SchedulerService {
       }
     } catch (error) {
       logger.error('[DatabaseBackup] 清理过期备份失败', error);
+    }
+  }
+
+  /**
+   * 每周画像分析（为活跃用户）
+   */
+  private async runWeeklyPortraitAnalysis(): Promise<void> {
+    logger.info('[PortraitAnalysis] 开始执行周画像分析...');
+
+    try {
+      // 获取所有用户
+      const users = await this.userRepository.findAll();
+
+      let analyzedCount = 0;
+      let updatedCount = 0;
+
+      for (const user of users) {
+        // 这里可以添加活跃度判断，只分析活跃用户
+        // 简单实现：分析所有用户
+        const result = await this.portraitEvolution.analyzeAndUpdatePortrait(
+          user.id,
+          [], // 空对话，仅触发能力分数检查
+          true // 强制更新版本号
+        );
+
+        analyzedCount++;
+        if (result.portraitUpdates.length > 0) {
+          updatedCount++;
+          logger.info('[PortraitAnalysis] 用户画像已更新', {
+            userId: user.id,
+            updates: result.portraitUpdates.length,
+          });
+        }
+      }
+
+      logger.info('[PortraitAnalysis] 周画像分析完成', {
+        total: users.length,
+        analyzed: analyzedCount,
+        updated: updatedCount,
+      });
+    } catch (error) {
+      logger.error('[PortraitAnalysis] 周画像分析失败', error);
+      throw error;
     }
   }
 }
