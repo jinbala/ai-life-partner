@@ -1,8 +1,9 @@
 node_modules/
 dist/
-.env
+.env*
 *.log
 data/
 logs/
 .vscode/
 *.local
+.env.docker/
