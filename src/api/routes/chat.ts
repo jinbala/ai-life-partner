@@ -10,6 +10,7 @@ import { sessionManager } from '../../context/sessionManager';
 import { logger } from '../../utils/logger';
 import { validate, ChatMessageWithSessionSchema } from '../../utils/validators';
 import { optionalAuth } from '../middleware/auth';
+import { UserService } from '../../services/user';
 
 const router = Router();
 const aiService = new AIService();
@@ -36,6 +37,19 @@ async function getChatSession(sessionId: string, userId?: string): Promise<ChatS
   }
 
   return sessionData.metadata.chatSession;
+}
+
+/**
+ * 提取关键词
+ */
+function extractKeywords(text: string, limit: number = 10): string[] {
+  const chineseChars = text.match(/[\u4e00-\u9fa5]/g) || [];
+  const englishWords = text.match(/[a-zA-Z]+/g) || [];
+  const all = [...chineseChars, ...englishWords];
+  const freq = new Map<string, number>();
+  all.forEach((w) => freq.set(w, (freq.get(w) || 0) + 1));
+  const sorted = Array.from(freq.entries()).sort((a, b) => b[1] - a[1]);
+  return sorted.slice(0, limit).map(([word]) => word);
 }
 
 /**
@@ -80,16 +94,36 @@ router.post('/message', optionalAuth, async (req: Request, res: Response) => {
       conversationHistory.splice(0, conversationHistory.length - 20);
     }
 
+    // 加载用户上下文（画像、记忆、目标等）
+    const userServices = new UserService(userId);
+    const portraitSummary = await userServices.portrait.getSummary();
+    const goalSummary = await userServices.goals.getSummary();
+    const memorySummary = await userServices.memories.getSummary();
+    const assetsSummary = await userServices.assets.getSummary();
+
+    // 检索相关记忆和资产
+    const keywords = extractKeywords(message);
+    const relatedMemories = await userServices.memories.search(keywords);
+    const relatedAssets = await userServices.assets.search(keywords);
+
     // 生成系统提示
     const systemPrompt = await generateSystemPrompt({
       currentFocus: session.currentFocus,
     });
 
+    // 注入记忆和资产
+    const memoriesText = userServices.memories.formatForPrompt(relatedMemories);
+    const assetsText = userServices.assets.formatForPrompt(relatedAssets);
+    const extraContext = [memoriesText, assetsText].filter(Boolean).join('\n\n');
+
     // 调用 AI 服务
     const aiResponse = await aiService.chat(
       [
-        { role: 'system', content: systemPrompt },
-        ...conversationHistory.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        {
+          role: 'system',
+          content: `${systemPrompt}\n\n用户画像：${portraitSummary}\n目标状态：${goalSummary}\n${extraContext ? extraContext + '\n' : ''}`,
+        },
+        ...conversationHistory.slice(-10).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
       ],
       {
         maxTokens: 2000,
