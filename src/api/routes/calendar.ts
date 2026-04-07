@@ -129,14 +129,14 @@ router.post('/entry/:date', sessionAuth, async (req: Request, res: Response) => 
     let entry;
     if (existingEntry) {
       // 更新现有日记
-      entry = await reviewRepo.update(existingEntry.id, content.trim());
+      entry = await reviewRepo.update(existingEntry.id, content.trim(), mood || null);
     } else {
       // 创建新日记
       const existingReviews = await reviewRepo.findByType(userId, 'daily');
       let existing = existingReviews.find(r => r.period_start === date);
 
       if (existing) {
-        entry = await reviewRepo.update(existing.id, content.trim());
+        entry = await reviewRepo.update(existing.id, content.trim(), mood || null);
       } else {
         await reviewRepo.create({
           user_id: userId,
@@ -144,6 +144,7 @@ router.post('/entry/:date', sessionAuth, async (req: Request, res: Response) => 
           period_start: String(date),
           period_end: String(date),
           content: content.trim(),
+          mood: mood || null,
         });
         // 重新获取
         const reviews = await reviewRepo.findByType(userId, 'daily');
@@ -158,7 +159,7 @@ router.post('/entry/:date', sessionAuth, async (req: Request, res: Response) => 
           id: entry.id,
           date: entry.period_start,
           content: entry.content,
-          mood: mood || null,
+          mood: entry.mood || null,
           summary: entry.content?.substring(0, 100) + '...' || '',
           createdAt: entry.created_at,
         },

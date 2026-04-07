@@ -11,6 +11,7 @@ export interface Review {
   period_start: string | null;
   period_end: string | null;
   content: string;
+  mood?: string | null;
   created_at: string;
 }
 
@@ -20,6 +21,7 @@ export interface CreateReviewInput {
   period_start?: string;
   period_end?: string;
   content: string;
+  mood?: string | null;
 }
 
 export class ReviewRepository extends BaseRepository {
@@ -30,15 +32,16 @@ export class ReviewRepository extends BaseRepository {
     const id = `review_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     await this.execute(`
-      INSERT INTO reviews (id, user_id, type, period_start, period_end, content, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ${getNowSql()})
+      INSERT INTO reviews (id, user_id, type, period_start, period_end, content, mood, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ${getNowSql()})
     `, [
       id,
       input.user_id,
       input.type,
       input.period_start || null,
       input.period_end || null,
-      input.content
+      input.content,
+      input.mood || null
     ]);
 
     return (await this.findById(id))!;
@@ -99,11 +102,18 @@ export class ReviewRepository extends BaseRepository {
   /**
    * 更新复盘记录
    */
-  async update(id: string, content: string): Promise<Review | null> {
-    await this.runUpdate(
-      `UPDATE reviews SET content = ? WHERE id = ?`,
-      [content, id]
-    );
+  async update(id: string, content: string, mood?: string | null): Promise<Review | null> {
+    if (mood !== undefined) {
+      await this.runUpdate(
+        `UPDATE reviews SET content = ?, mood = ? WHERE id = ?`,
+        [content, mood, id]
+      );
+    } else {
+      await this.runUpdate(
+        `UPDATE reviews SET content = ? WHERE id = ?`,
+        [content, id]
+      );
+    }
     return await this.findById(id);
   }
 }

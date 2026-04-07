@@ -53,6 +53,18 @@ function getMigrations(): Migration[] {
         );
       `,
     },
+    {
+      version: 2,
+      name: 'add_mood_to_reviews',
+      up: `
+        -- 为 reviews 表添加 mood 字段
+        ALTER TABLE reviews ADD COLUMN mood TEXT;
+      `,
+      down: `
+        -- SQLite 不支持直接删除列，需要重建表
+        -- 这里仅作记录，实际回滚需要手动操作
+      `,
+    },
   ];
 }
 
