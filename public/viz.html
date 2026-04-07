@@ -117,6 +117,16 @@
       grid-column: 1 / -1;
     }
 
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: white;
+      margin: 30px 0 20px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     .goal-list {
       max-height: 400px;
       overflow-y: auto;
@@ -216,7 +226,8 @@
       <div class="loading">加载中...</div>
     </div>
 
-    <!-- 图表区域 -->
+    <!-- 第一部分：核心图表 -->
+    <h2 class="section-title">📊 核心能力</h2>
     <div class="charts-grid">
       <!-- 能力雷达图 -->
       <div class="chart-card">
@@ -233,10 +244,61 @@
           <canvas id="trendChart"></canvas>
         </div>
       </div>
+    </div>
 
-      <!-- 目标进度 -->
+    <!-- 第二部分：决策与任务分析 -->
+    <h2 class="section-title">📋 执行分析</h2>
+    <div class="charts-grid">
+      <!-- 决策成功率 -->
+      <div class="chart-card">
+        <h3>✅ 决策成功率</h3>
+        <div class="chart-container">
+          <canvas id="decisionChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 任务完成率趋势 -->
       <div class="chart-card full-width">
-        <h3>🏆 目标进度</h3>
+        <h3>📅 任务完成率趋势</h3>
+        <div class="chart-container">
+          <canvas id="taskTrendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 第三部分：话题分析 -->
+    <h2 class="section-title">💬 话题分析</h2>
+    <div class="charts-grid">
+      <!-- 高频话题词云 -->
+      <div class="chart-card full-width">
+        <h3>🔥 高频话题 TOP20</h3>
+        <div id="topicList" style="display: flex; flex-wrap: wrap; gap: 10px; min-height: 200px;">
+          <div class="loading">加载中...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 第四部分：周/月报告 -->
+    <h2 class="section-title">📑 周期性报告</h2>
+    <div class="charts-grid">
+      <!-- 周度对比 -->
+      <div class="chart-card">
+        <h3>📊 本周 vs 上周</h3>
+        <div id="weeklyReport" class="loading">加载中...</div>
+      </div>
+
+      <!-- 月度趋势 -->
+      <div class="chart-card">
+        <h3>📈 月度趋势</h3>
+        <div id="monthlyReport" class="loading">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 第五部分：目标进度 -->
+    <h2 class="section-title">🏆 目标进度</h2>
+    <div class="charts-grid">
+      <!-- 目标进度列表 -->
+      <div class="chart-card full-width">
         <div class="goal-list" id="goalList">
           <div class="loading">加载中...</div>
         </div>
@@ -305,6 +367,8 @@
     // 全局图表实例
     let radarChartInstance = null;
     let trendChartInstance = null;
+    let decisionChartInstance = null;
+    let taskTrendChartInstance = null;
 
     // 加载综合统计数据
     async function loadDashboard() {
@@ -329,6 +393,13 @@
       // 单独加载成长曲线和目标进度
       loadTrendChart();
       loadGoalProgress();
+
+      // 加载新增的分析图表
+      loadDecisionStats();
+      loadTaskCompletionTrend();
+      loadTopicAnalysis();
+      loadWeeklyReport();
+      loadMonthlyReport();
     }
 
     // 渲染统计卡片
@@ -437,6 +508,298 @@
         console.error('加载成长曲线失败:', error);
         renderEmptyTrendChart();
       }
+    }
+
+    // 加载决策统计数据
+    async function loadDecisionStats() {
+      await ensureToken();
+      try {
+        const response = await fetchWithAuth(`/api/viz/decision-stats`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderDecisionChart(result.data);
+        }
+      } catch (error) {
+        console.error('加载决策统计失败:', error);
+      }
+    }
+
+    function renderDecisionChart(data) {
+      const ctx = document.getElementById('decisionChart').getContext('2d');
+      const overview = data.overview;
+
+      if (decisionChartInstance) {
+        decisionChartInstance.destroy();
+      }
+
+      decisionChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['成功', '待复盘', '进行中'],
+          datasets: [{
+            data: [overview.completed, overview.pending, overview.total - overview.completed - overview.pending],
+            backgroundColor: ['#4BC0C0', '#FFCE56', '#FF6384'],
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: {
+              callbacks: {
+                label: (context) => `${context.label}: ${context.raw} (${((context.raw / overview.total) * 100).toFixed(0)}%)`,
+              },
+            },
+          },
+        },
+      });
+
+      // 在中心显示成功率
+      const centerText = document.createElement('div');
+      centerText.innerHTML = `<div style="text-align:center;font-size:1.5rem;font-weight:bold;color:#4BC0C0;">${overview.successRate}%</div><div style="text-align:center;font-size:0.8rem;color:#666;">成功率</div>`;
+      const chartParent = document.getElementById('decisionChart').parentElement;
+      const existingCenter = chartParent.querySelector('div[style*="text-align:center"]');
+      if (!existingCenter) {
+        chartParent.appendChild(centerText);
+      }
+    }
+
+    // 加载任务完成率趋势
+    async function loadTaskCompletionTrend() {
+      await ensureToken();
+      try {
+        const response = await fetchWithAuth(`/api/viz/task-completion-trend?days=30`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderTaskTrendChart(result.data);
+        }
+      } catch (error) {
+        console.error('加载任务完成率失败:', error);
+      }
+    }
+
+    function renderTaskTrendChart(data) {
+      const ctx = document.getElementById('taskTrendChart').getContext('2d');
+
+      if (taskTrendChartInstance) {
+        taskTrendChartInstance.destroy();
+      }
+
+      taskTrendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.labels,
+          datasets: data.datasets.map(ds => ({
+            label: ds.label,
+            data: ds.data,
+            borderColor: ds.borderColor,
+            backgroundColor: ds.backgroundColor,
+            borderWidth: 2,
+            tension: 0.3,
+            fill: ds.label === '完成率 (%)',
+            yAxisID: ds.label === '完成率 (%)' ? 'y1' : 'y2',
+          })),
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              grid: { color: 'rgba(0, 0, 0, 0.05)' },
+              ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } },
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              min: 0,
+              max: 100,
+              title: { display: true, text: '完成率 (%)' },
+              grid: { drawOnChartArea: false },
+            },
+            y2: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              title: { display: true, text: '任务数' },
+              grid: { drawOnChartArea: false },
+            },
+          },
+          plugins: {
+            legend: { position: 'top' },
+            tooltip: { mode: 'index', intersect: false },
+          },
+        },
+      });
+    }
+
+    // 加载话题分析
+    async function loadTopicAnalysis() {
+      await ensureToken();
+      try {
+        const response = await fetchWithAuth(`/api/viz/topic-analysis?days=30`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderTopicList(result.data.topKeywords);
+        }
+      } catch (error) {
+        console.error('加载话题分析失败:', error);
+      }
+    }
+
+    function renderTopicList(keywords) {
+      const container = document.getElementById('topicList');
+      if (!keywords || keywords.length === 0) {
+        container.innerHTML = '<div class="loading">暂无话题数据</div>';
+        return;
+      }
+
+      // 计算最大频率用于字体大小缩放
+      const maxCount = keywords[0].count;
+
+      container.innerHTML = keywords.map((kw, index) => {
+        const fontSize = Math.max(14, 28 - (index * 1.2));
+        const opacity = Math.max(0.4, 1 - (index * 0.04));
+        const colors = ['#667eea', '#764ba2', '#FF6384', '#36A2EB', '#4BC0C0', '#FFCE56'];
+        const color = colors[index % colors.length];
+
+        return `
+          <span style="
+            display: inline-block;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, ${color}22 0%, ${color}44 100%);
+            border-radius: 20px;
+            font-size: ${fontSize}px;
+            font-weight: ${index < 5 ? '600' : '400'};
+            color: ${color};
+            opacity: ${opacity};
+            transition: transform 0.2s;
+          " onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+            ${kw.word} <span style="font-size:${fontSize * 0.6}px">${kw.count}次</span>
+          </span>
+        `;
+      }).join('');
+    }
+
+    // 加载周度报告
+    async function loadWeeklyReport() {
+      await ensureToken();
+      try {
+        const response = await fetchWithAuth(`/api/viz/weekly-report`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderWeeklyReport(result.data);
+        }
+      } catch (error) {
+        console.error('加载周度报告失败:', error);
+      }
+    }
+
+    function renderWeeklyReport(data) {
+      const container = document.getElementById('weeklyReport');
+      const tasks = data.tasks;
+      const completionRate = data.completionRate;
+      const decisions = data.decisions;
+      const reviews = data.reviews;
+
+      const taskTrendIcon = tasks.change > 0 ? '📈' : tasks.change < 0 ? '📉' : '➡️';
+      const completionTrendIcon = completionRate.thisWeek > completionRate.lastWeek ? '⬆️' : completionRate.thisWeek < completionRate.lastWeek ? '⬇️' : '➡️';
+
+      container.innerHTML = `
+        <div style="padding: 10px 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <span style="color: #666;">任务完成</span>
+            <span style="font-size: 1.2rem; font-weight: bold;">
+              ${completionRate.thisWeek}%
+              <span style="font-size: 0.9rem; color: #999;">(上周 ${completionRate.lastWeek}%)</span>
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <span style="color: #666;">任务数量</span>
+            <span style="font-size: 1rem;">
+              ${taskTrendIcon} ${tasks.thisWeek.completed}/${tasks.thisWeek.total}
+              <span style="font-size: 0.85rem; color: #999;">(上周 ${tasks.lastWeek.completed}/${tasks.lastWeek.total})</span>
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <span style="color: #666;">决策数量</span>
+            <span style="font-size: 1rem;">
+              ${decisions.thisWeek} <span style="font-size: 0.85rem; color: #999;">(上周 ${decisions.lastWeek})</span>
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #666;">复盘次数</span>
+            <span style="font-size: 1rem;">
+              ${reviews.thisWeek} <span style="font-size: 0.85rem; color: #999;">(上周 ${reviews.lastWeek})</span>
+            </span>
+          </div>
+        </div>
+      `;
+    }
+
+    // 加载月度报告
+    async function loadMonthlyReport() {
+      await ensureToken();
+      try {
+        const response = await fetchWithAuth(`/api/viz/monthly-report`);
+        const result = await response.json();
+
+        if (result.success) {
+          renderMonthlyReport(result.data);
+        }
+      } catch (error) {
+        console.error('加载月度报告失败:', error);
+      }
+    }
+
+    function renderMonthlyReport(data) {
+      const container = document.getElementById('monthlyReport');
+      const tasks = data.tasks;
+      const decisions = data.decisions;
+      const reviews = data.reviews;
+
+      const taskChangeIcon = tasks.change > 0 ? '📈' : tasks.change < 0 ? '📉' : '➡️';
+      const decisionChangeIcon = decisions.change > 0 ? '📈' : decisions.change < 0 ? '📉' : '➡️';
+      const reviewChangeIcon = reviews.change > 0 ? '📈' : reviews.change < 0 ? '📉' : '➡️';
+
+      const completionRate = tasks.thisMonth.total > 0
+        ? Math.round((tasks.thisMonth.completed / tasks.thisMonth.total) * 100)
+        : 0;
+
+      container.innerHTML = `
+        <div style="padding: 10px 0;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 2rem; font-weight: bold; color: #667eea;">${completionRate}%</div>
+            <div style="color: #999; font-size: 0.9rem;">本月任务完成率</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 8px; background: #f8f9fa; border-radius: 8px;">
+            <span style="color: #666;">任务</span>
+            <span style="font-size: 1rem;">
+              ${taskChangeIcon} ${tasks.thisMonth.completed}/${tasks.thisMonth.total}
+              <span style="font-size: 0.85rem; color: #999;">(上月 ${tasks.lastMonth.completed}/${tasks.lastMonth.total})</span>
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 8px; background: #f8f9fa; border-radius: 8px;">
+            <span style="color: #666;">决策</span>
+            <span style="font-size: 1rem;">
+              ${decisionChangeIcon} ${decisions.thisMonth}
+              <span style="font-size: 0.85rem; color: #999;">(上月 ${decisions.lastMonth})</span>
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #f8f9fa; border-radius: 8px;">
+            <span style="color: #666;">复盘</span>
+            <span style="font-size: 1rem;">
+              ${reviewChangeIcon} ${reviews.thisMonth}
+              <span style="font-size: 0.85rem; color: #999;">(上月 ${reviews.lastMonth})</span>
+            </span>
+          </div>
+        </div>
+      `;
     }
 
     function renderEmptyTrendChart() {
