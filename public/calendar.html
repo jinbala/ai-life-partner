@@ -1452,14 +1452,17 @@
         updateWordCount();
 
         // 自动保存
-        const dateStr = aiComparisonData.dateStr || selectedDate;
+        const dateStr = aiComparisonData.dateStr;
         if (dateStr) {
+          // 先保存，不关闭弹窗，saveEntry 会刷新弹窗
           await saveEntry(dateStr, aiComparisonData.aiVersion);
         } else {
           alert('✨ 已采用 AI ' + aiComparisonData.type + '版本！请手动保存。');
+          closeModal();
         }
+      } else {
+        closeModal();
       }
-      closeModal();
     };
 
     // 恢复原文
@@ -1581,13 +1584,18 @@
 
         if (result.success) {
           if (saveContent !== undefined) {
+            // AI 保存后关闭弹窗，刷新日历
             alert('✨ AI ' + aiComparisonData.type + '已保存！');
+            entries[dateStr] = { content: content, mood: mood };
+            renderCalendar();
+            closeModal();
           } else {
+            // 手动保存后刷新弹窗
             alert('保存成功！');
+            entries[dateStr] = { content: content, mood: mood };
+            renderCalendar();
+            openDayModal(selectedDate);
           }
-          entries[dateStr] = { content: content, mood: mood };
-          renderCalendar();
-          openDayModal(selectedDate);
         } else {
           alert('保存失败：' + (result.error?.message || '未知错误'));
         }
