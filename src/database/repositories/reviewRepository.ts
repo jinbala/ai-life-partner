@@ -95,4 +95,15 @@ export class ReviewRepository extends BaseRepository {
     const result = await this.runDelete('DELETE FROM reviews WHERE id = ?', [id]);
     return result > 0;
   }
+
+  /**
+   * 更新复盘记录
+   */
+  async update(id: string, content: string): Promise<Review | null> {
+    await this.runUpdate(
+      `UPDATE reviews SET content = ? WHERE id = ?`,
+      [content, id]
+    );
+    return await this.findById(id);
+  }
 }

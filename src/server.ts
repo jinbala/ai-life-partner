@@ -25,7 +25,7 @@ import { DataExportService } from './services/export';
 
 // 中间件
 import { requestLogger, requestId } from './api/middleware';
-import { healthRoutes, chatRoutes, feishuRoutes, visualizationRoutes, authRoutes } from './api/routes';
+import { healthRoutes, chatRoutes, feishuRoutes, visualizationRoutes, authRoutes, calendarRoutes } from './api/routes';
 
 // 工具
 import { logger, setLogFile, cleanupOldLogs } from './utils/logger';
@@ -74,12 +74,18 @@ app.get('/viz', (req: Request, res: Response) => {
   res.sendFile('viz.html', { root: 'public' });
 });
 
+// 日历日记页面路由
+app.get('/calendar', (req: Request, res: Response) => {
+  res.sendFile('calendar.html', { root: 'public' });
+});
+
 // API 路由
 app.use('/health', healthRoutes);
 app.use('/auth', authRoutes);
 app.use('/chat/api', chatRoutes);
 app.use('/feishu', feishuRoutes);
 app.use('/api/viz', visualizationRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // 初始化服务
 const aiService = new AIService();
