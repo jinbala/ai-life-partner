@@ -216,7 +216,7 @@ router.post('/generate/:date', sessionAuth, async (req: Request, res: Response) 
   try {
     const taskRepo = new DailyTaskRepository();
     const conversationRepo = new ConversationHistoryRepository();
-    const AIService = (await import('../../services/ai/aiService')).default;
+    const { AIService } = await import('../../services/ai/aiService');
     const aiService = new AIService();
 
     // 获取当天任务
@@ -241,7 +241,7 @@ ${conversations.length > 0 ? conversations.slice(0, 5).map(c => `${c.role === 'u
 3. 突出今天的收获和成长
 4. 如果没有数据和对话，就说"今天是平静的一天"，并鼓励用户记录生活`;
 
-    const aiResponse = await aiService.generate(prompt, {
+    const aiResponse = await aiService.chat([{ role: 'user', content: prompt }], {
       maxTokens: 500,
       temperature: 0.7,
     });
