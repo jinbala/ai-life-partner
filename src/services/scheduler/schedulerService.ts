@@ -5,10 +5,11 @@
 
 import cron from 'node-cron';
 import type { ScheduledTask } from 'node-cron';
-import { UserRepository } from '../../database/repositories';
+import { UserRepository, ConversationHistoryRepository, DailyTaskRepository, ReviewRepository } from '../../database/repositories';
 import { FeishuMessageService } from '../../integrations/feishu';
 import { GoalService } from '../../services/user/goalService';
 import { PortraitEvolutionService } from '../../services/user/portraitEvolutionService';
+import { AIService } from '../../services/ai/aiService';
 import { logger } from '../../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -20,16 +21,26 @@ export class SchedulerService {
   private userRepository: UserRepository;
   private messageService: FeishuMessageService;
   private portraitEvolution: PortraitEvolutionService;
+  private aiService: AIService;
+  private conversationRepo: ConversationHistoryRepository;
+  private taskRepo: DailyTaskRepository;
+  private reviewRepo: ReviewRepository;
   private morningPushJob: ScheduledTask | null = null;
   private reviewReminderJob: ScheduledTask | null = null;
   private databaseBackupJob: ScheduledTask | null = null;
   private weeklyPortraitAnalysisJob: ScheduledTask | null = null;
+  private dailySummaryJob: ScheduledTask | null = null;
+  private conversationCleanupJob: ScheduledTask | null = null;
   private backupDir: string;
 
   constructor() {
     this.userRepository = new UserRepository();
     this.messageService = new FeishuMessageService();
     this.portraitEvolution = new PortraitEvolutionService();
+    this.aiService = new AIService();
+    this.conversationRepo = new ConversationHistoryRepository();
+    this.taskRepo = new DailyTaskRepository();
+    this.reviewRepo = new ReviewRepository();
     this.backupDir = path.join(process.cwd(), 'data', 'backups');
 
     // 确保备份目录存在
@@ -78,6 +89,24 @@ export class SchedulerService {
       timezone: 'Asia/Shanghai',
     });
 
+    // 每天晚上 11:00 自动生成当日总结
+    this.dailySummaryJob = cron.schedule('0 23 * * *', () => {
+      this.generateDailySummary().catch(err => {
+        logger.error('[Scheduler] 每日总结失败', err);
+      });
+    }, {
+      timezone: 'Asia/Shanghai',
+    });
+
+    // 每周日凌晨 2:00 清理过期对话（保留 90 天）
+    this.conversationCleanupJob = cron.schedule('0 2 * * 0', () => {
+      this.cleanupOldConversations().catch(err => {
+        logger.error('[Scheduler] 对话清理失败', err);
+      });
+    }, {
+      timezone: 'Asia/Shanghai',
+    });
+
     logger.info('[Scheduler] 定时任务已启动');
   }
 
@@ -100,6 +129,14 @@ export class SchedulerService {
     if (this.weeklyPortraitAnalysisJob) {
       this.weeklyPortraitAnalysisJob.stop();
       this.weeklyPortraitAnalysisJob = null;
+    }
+    if (this.dailySummaryJob) {
+      this.dailySummaryJob.stop();
+      this.dailySummaryJob = null;
+    }
+    if (this.conversationCleanupJob) {
+      this.conversationCleanupJob.stop();
+      this.conversationCleanupJob = null;
     }
     logger.info('[Scheduler] 定时任务已停止');
   }
@@ -284,6 +321,152 @@ export class SchedulerService {
       });
     } catch (error) {
       logger.error('[PortraitAnalysis] 周画像分析失败', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 生成每日自动总结（晚上 11 点执行）
+   */
+  private async generateDailySummary(): Promise<void> {
+    logger.info('[DailySummary] 开始生成每日总结...');
+
+    try {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateStr = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // 获取所有用户
+      const users = await this.userRepository.findAll();
+      let successCount = 0;
+
+      for (const user of users) {
+        try {
+          // 获取当天的对话历史
+          const conversations = await this.conversationRepo.findByDate(user.id, dateStr);
+          if (conversations.length === 0) {
+            logger.debug('[DailySummary] 用户今日无对话，跳过', { userId: user.id });
+            continue;
+          }
+
+          // 获取当天完成的任务
+          const tasks = await this.taskRepo.findByDate(user.id, dateStr);
+          const completedTasks = tasks.filter(t => t.is_completed === 1);
+
+          // 检查是否已有日记
+          const existingReviews = await this.reviewRepo.findByType(user.id, 'daily');
+          const existingEntry = existingReviews.find(r => r.period_start === dateStr);
+          if (existingEntry) {
+            logger.debug('[DailySummary] 用户今日已有日记，跳过自动生成', { userId: user.id });
+            continue;
+          }
+
+          // 准备 AI 分析的上下文
+          const conversationText = conversations
+            .slice(0, 50) // 限制对话数量
+            .map(c => `${c.role === 'user' ? '用户' : 'AI'}: ${c.content.substring(0, 200)}`)
+            .join('\n');
+
+          const tasksText = completedTasks.length > 0
+            ? completedTasks.map(t => `- ${t.description}`).join('\n')
+            : '无完成任务';
+
+          const prompt = `请为以下用户当日活动生成一份简洁的总结日记：
+
+【对话记录】
+${conversationText}
+
+【完成任务】
+${tasksText}
+
+请生成一份 200-300 字的总结，包含：
+1. 今日主要活动/讨论话题
+2. 完成的任务
+3. 关键洞察或收获（如果有）
+4. 温磬提示或建议
+
+保持友好、鼓励的语气，用中文回复。`;
+
+          const aiResponse = await this.aiService.chat([
+            { role: 'user', content: prompt },
+          ], {
+            maxTokens: 500,
+            temperature: 0.7,
+          });
+
+          // 创建日记条目
+          await this.reviewRepo.create({
+            user_id: user.id,
+            type: 'daily',
+            period_start: dateStr,
+            period_end: dateStr,
+            content: aiResponse.content,
+          });
+
+          successCount++;
+          logger.info('[DailySummary] 已为用户生成每日总结', {
+            userId: user.id,
+            conversations: conversations.length,
+            completedTasks: completedTasks.length,
+          });
+        } catch (error) {
+          logger.error('[DailySummary] 用户总结失败', {
+            userId: user.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      logger.info('[DailySummary] 每日总结完成', {
+        totalUsers: users.length,
+        success: successCount,
+      });
+    } catch (error) {
+      logger.error('[DailySummary] 每日总结失败', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 清理过期对话（保留 90 天）
+   */
+  private async cleanupOldConversations(): Promise<void> {
+    logger.info('[ConversationCleanup] 开始清理过期对话...');
+
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 90); // 保留 90 天
+      const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
+
+      // 获取所有用户
+      const users = await this.userRepository.findAll();
+      let totalDeleted = 0;
+
+      for (const user of users) {
+        try {
+          const deleted = await this.conversationRepo.deleteBefore(user.id, cutoffDateStr);
+          if (deleted > 0) {
+            logger.info('[ConversationCleanup] 已清理用户旧对话', {
+              userId: user.id,
+              deleted,
+            });
+            totalDeleted += deleted;
+          }
+        } catch (error) {
+          logger.error('[ConversationCleanup] 用户清理失败', {
+            userId: user.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      logger.info('[ConversationCleanup] 对话清理完成', {
+        totalUsers: users.length,
+        totalDeleted,
+        cutoffDate: cutoffDateStr,
+      });
+    } catch (error) {
+      logger.error('[ConversationCleanup] 对话清理失败', error);
       throw error;
     }
   }

@@ -349,21 +349,19 @@ async function handleUserMessage(
   convRepo.add(userId, 'user', content).catch(err => logger.warn('记录对话失败', err));
   convRepo.add(userId, 'assistant', response.content).catch(err => logger.warn('记录对话失败', err));
 
-  // 检查用户是否表达了完成任务的意图，自动标记任务完成
-  const completePatterns = ['完成了', '做完了', '做好了', '搞定', '弄好了', '已完成'];
-  const isCompleteMessage = completePatterns.some(p => content.includes(p));
+  // AI 驱动的任务完成自动检测
+  const taskRepo = new DailyTaskRepository();
+  const todayTasks = await taskRepo.findByDate(userId, today);
+  const pendingTasks = todayTasks.filter(t => t.is_completed === 0).map(t => ({
+    id: t.id,
+    description: t.description,
+  }));
 
-  if (isCompleteMessage) {
-    const taskRepo = new DailyTaskRepository();
-    const todayTasks = await taskRepo.findByDate(userId, today);
-    // 查找匹配的任务并标记完成
-    for (const task of todayTasks) {
-      if (task.is_completed === 0 && content.includes(task.description)) {
-        await taskRepo.markAsCompleted(task.id);
-        logger.info('[Server] 自动标记任务完成', { taskId: task.id, description: task.description });
-        break;
-      }
-    }
+  if (pendingTasks.length > 0) {
+    // 异步 AI 分析，不阻塞响应
+    detectTaskCompletionAI(userId, content, pendingTasks, taskRepo, aiService, logger).catch(err => {
+      logger.warn('[Server] AI 任务完成检测失败', { userId, error: err.message });
+    });
   }
 
   // 异步分析对话并更新画像（每 5 次对话分析一次）
@@ -394,6 +392,82 @@ function extractKeywords(text: string, limit: number = 10): string[] {
   all.forEach((w) => freq.set(w, (freq.get(w) || 0) + 1));
   const sorted = Array.from(freq.entries()).sort((a, b) => b[1] - a[1]);
   return sorted.slice(0, limit).map(([word]) => word);
+}
+
+/**
+ * AI 驱动的任务完成检测
+ * 分析用户消息，判断是否完成了某个任务
+ */
+async function detectTaskCompletionAI(
+  userId: string,
+  userMessage: string,
+  pendingTasks: Array<{ id: string; description: string }>,
+  taskRepo: DailyTaskRepository,
+  aiService: AIService,
+  logger: any
+): Promise<void> {
+  const tasksText = pendingTasks.map(t => `${t.id}. ${t.description}`).join('\n');
+
+  const prompt = `请分析用户的消息是否表示完成了以下任务中的任何一个：
+
+【待完成任务列表】
+${tasksText}
+
+【用户消息】
+${userMessage}
+
+请判断用户是否完成了某个任务，返回 JSON 格式：
+{
+  "completed": true/false,
+  "task_id": "任务 ID（如果完成了任务）",
+  "confidence": 0.0-1.0（置信度）,
+  "reason": "判断理由"
+}
+
+只返回 JSON，不要其他内容。如果用户消息与任务完成无关，返回 {"completed": false}`;
+
+  try {
+    const response = await aiService.chat([
+      { role: 'user', content: prompt },
+    ], {
+      maxTokens: 200,
+      temperature: 0.1, // 低温保证输出格式稳定
+    });
+
+    // 解析 AI 响应
+    const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      logger.debug('[TaskDetection] AI 响应格式异常', { userId, response: response.content });
+      return;
+    }
+
+    const result = JSON.parse(jsonMatch[0]);
+
+    if (result.completed && result.task_id && result.confidence > 0.6) {
+      const matchedTask = pendingTasks.find(t => t.id === result.task_id);
+      if (matchedTask) {
+        await taskRepo.markAsCompleted(result.task_id);
+        logger.info('[Server] AI 自动标记任务完成', {
+          userId,
+          taskId: result.task_id,
+          description: matchedTask.description,
+          confidence: result.confidence,
+          reason: result.reason,
+        });
+      }
+    } else {
+      logger.debug('[TaskDetection] 未检测到任务完成', {
+        userId,
+        completed: result.completed,
+        confidence: result.confidence,
+      });
+    }
+  } catch (error) {
+    logger.warn('[TaskDetection] 分析失败', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
