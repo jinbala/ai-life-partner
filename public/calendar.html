@@ -1212,32 +1212,26 @@
       textarea.disabled = true;
 
       try {
-        const { AIService } = await import('../../services/ai/aiService');
-        const aiService = new AIService();
-
-        const prompt = `请帮我润色这篇日记，保持原意但让表达更流畅、更有文采。
-要求：
-1. 保持原文的核心信息和情感
-2. 优化语句流畅度
-3. 适当增加一些情感色彩
-4. 长度与原文相近
-5. 保持第一人称"我"的视角
-
-原文：
-${content}
-
-请直接输出润色后的版本，不要加任何说明。`;
-
-        const aiResponse = await aiService.chat([{ role: 'user', content: prompt }], {
-          maxTokens: 1000,
-          temperature: 0.5,
+        const response = await fetch('/api/calendar/ai-polish', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+          },
+          body: JSON.stringify({ content }),
         });
 
-        // 显示确认对话框
-        const useAi = confirm('✨ AI 润色完成！\n\n要替换为 AI 润色版吗？\n\n（取消可继续查看原文）');
-        if (useAi) {
-          textarea.value = aiResponse.content;
-          updateWordCount();
+        const result = await response.json();
+
+        if (result.success) {
+          // 显示确认对话框
+          const useAi = confirm('✨ AI 润色完成！\n\n要替换为 AI 润色版吗？\n\n（取消可继续查看原文）');
+          if (useAi) {
+            textarea.value = result.data.content;
+            updateWordCount();
+          }
+        } else {
+          alert('润色失败：' + (result.error?.message || '请稍后重试'));
         }
       } catch (error) {
         alert('AI 润色失败：' + error.message);
@@ -1263,33 +1257,26 @@ ${content}
       textarea.disabled = true;
 
       try {
-        const { AIService } = await import('../../services/ai/aiService');
-        const aiService = new AIService();
-
-        const prompt = `请帮我扩写这篇日记，在原文基础上进行深度延伸和思考。
-要求：
-1. 保留原文的核心内容
-2. 基于原文内容进行合理的延伸和深化
-3. 增加一些反思、感悟或启发
-4. 可以适当提问引发思考
-5. 保持第一人称"我"的视角
-6. 字数比原文增加 50%-100%
-
-原文：
-${content}
-
-请直接输出扩写后的版本，不要加任何说明。`;
-
-        const aiResponse = await aiService.chat([{ role: 'user', content: prompt }], {
-          maxTokens: 1500,
-          temperature: 0.7,
+        const response = await fetch('/api/calendar/ai-expand', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+          },
+          body: JSON.stringify({ content }),
         });
 
-        // 显示确认对话框
-        const useAi = confirm('🤖 AI 扩写完成！\n\n要替换为 AI 扩写版吗？\n\n（取消可继续查看原文）');
-        if (useAi) {
-          textarea.value = aiResponse.content;
-          updateWordCount();
+        const result = await response.json();
+
+        if (result.success) {
+          // 显示确认对话框
+          const useAi = confirm('🤖 AI 扩写完成！\n\n要替换为 AI 扩写版吗？\n\n（取消可继续查看原文）');
+          if (useAi) {
+            textarea.value = result.data.content;
+            updateWordCount();
+          }
+        } else {
+          alert('扩写失败：' + (result.error?.message || '请稍后重试'));
         }
       } catch (error) {
         alert('AI 扩写失败：' + error.message);

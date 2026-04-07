@@ -265,4 +265,103 @@ ${conversations.length > 0 ? conversations.slice(0, 5).map(c => `${c.role === 'u
   }
 });
 
+/**
+ * POST /api/calendar/ai-polish
+ * AI 润色日记
+ */
+router.post('/ai-polish', sessionAuth, async (req: Request, res: Response) => {
+  const { content } = req.body;
+
+  if (!content || content.length < 10) {
+    return res.status(400).json({
+      success: false,
+      error: { message: '内容太短，无法润色' },
+    });
+  }
+
+  try {
+    const { AIService } = await import('../../services/ai/aiService');
+    const aiService = new AIService();
+
+    const prompt = `请帮我润色这篇日记，保持原意但让表达更流畅、更有文采。
+要求：
+1. 保持原文的核心信息和情感
+2. 优化语句流畅度
+3. 适当增加一些情感色彩
+4. 长度与原文相近
+5. 保持第一人称"我"的视角
+
+原文：
+${content}
+
+请直接输出润色后的版本，不要加任何说明。`;
+
+    const aiResponse = await aiService.chat([{ role: 'user', content: prompt }], {
+      maxTokens: 1000,
+      temperature: 0.5,
+    });
+
+    res.json({
+      success: true,
+      data: { content: aiResponse.content },
+    });
+  } catch (error) {
+    logger.error('[Calendar] AI 润色失败', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'AI 润色失败，请稍后重试' },
+    });
+  }
+});
+
+/**
+ * POST /api/calendar/ai-expand
+ * AI 扩写日记
+ */
+router.post('/ai-expand', sessionAuth, async (req: Request, res: Response) => {
+  const { content } = req.body;
+
+  if (!content || content.length < 10) {
+    return res.status(400).json({
+      success: false,
+      error: { message: '内容太短，无法扩写' },
+    });
+  }
+
+  try {
+    const { AIService } = await import('../../services/ai/aiService');
+    const aiService = new AIService();
+
+    const prompt = `请帮我扩写这篇日记，在原文基础上进行深度延伸和思考。
+要求：
+1. 保留原文的核心内容
+2. 基于原文内容进行合理的延伸和深化
+3. 增加一些反思、感悟或启发
+4. 可以适当提问引发思考
+5. 保持第一人称"我"的视角
+6. 字数比原文增加 50%-100%
+
+原文：
+${content}
+
+请直接输出扩写后的版本，不要加任何说明。`;
+
+    const aiResponse = await aiService.chat([{ role: 'user', content: prompt }], {
+      maxTokens: 1500,
+      temperature: 0.7,
+    });
+
+    res.json({
+      success: true,
+      data: { content: aiResponse.content },
+    });
+  } catch (error) {
+    logger.error('[Calendar] AI 扩写失败', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'AI 扩写失败，请稍后重试' },
+    });
+  }
+});
+
 export { router as calendarRoutes };
