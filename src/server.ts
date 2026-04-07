@@ -79,6 +79,7 @@ app.get('/viz', (req: Request, res: Response) => {
 
 // 日历日记页面路由
 app.get('/calendar', (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile('calendar.html', { root: 'public' });
 });
 
