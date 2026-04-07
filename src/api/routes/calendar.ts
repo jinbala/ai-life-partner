@@ -34,6 +34,7 @@ router.get('/entries', sessionAuth, async (req: Request, res: Response) => {
           id: review.id,
           date: review.period_start,
           content: review.content,
+          mood: review.mood || null,
           summary: review.content?.substring(0, 50) + '...' || '',
           createdAt: review.created_at,
         };
@@ -81,6 +82,7 @@ router.get('/entry/:date', sessionAuth, async (req: Request, res: Response) => {
           id: entry.id,
           date: entry.period_start,
           content: entry.content,
+          mood: entry.mood || null,
           summary: entry.content?.substring(0, 100) + '...' || '',
           createdAt: entry.created_at,
         } : null,
