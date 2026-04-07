@@ -19,15 +19,35 @@
       justify-content: center;
       align-items: center;
       padding: 20px;
+      gap: 20px;
+      flex-direction: row;
+    }
+
+    .main-container {
+      display: flex;
+      gap: 20px;
+      max-width: 1400px;
+      width: 100%;
+      height: 85vh;
     }
 
     .chat-container {
-      width: 100%;
-      max-width: 600px;
-      height: 80vh;
+      flex: 1;
       background: white;
       border-radius: 20px;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 500px;
+    }
+
+    .calendar-panel {
+      width: 350px;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 20px;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -223,9 +243,6 @@
     }
 
     .nav-links {
-      position: absolute;
-      top: 20px;
-      right: 20px;
       display: flex;
       gap: 10px;
     }
@@ -243,18 +260,129 @@
     .nav-link:hover {
       background: rgba(255,255,255,0.3);
     }
+
+    .calendar-panel-header {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .calendar-mini {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+      font-size: 0.85rem;
+    }
+
+    .calendar-mini .day-header {
+      text-align: center;
+      font-weight: 600;
+      color: #666;
+      padding: 5px;
+    }
+
+    .calendar-mini .day {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+    }
+
+    .calendar-mini .day:hover {
+      background: #f0f0f0;
+    }
+
+    .calendar-mini .day.today {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      font-weight: 600;
+    }
+
+    .calendar-mini .day.has-activity {
+      background: #e8f5e9;
+      border: 1px solid #4caf50;
+    }
+
+    .calendar-mini .day.other-month {
+      color: #ccc;
+      cursor: default;
+    }
+
+    .calendar-mini .day.selected {
+      background: #667eea;
+      color: white;
+    }
+
+    .mini-nav {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .mini-nav button {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      background: #667eea;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background 0.3s;
+    }
+
+    .mini-nav button:hover {
+      background: #5568d3;
+    }
+
+    .day-summary {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #e9ecef;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .day-summary h4 {
+      font-size: 0.9rem;
+      color: #667eea;
+      margin-bottom: 10px;
+    }
+
+    .summary-item {
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+    }
+
+    .summary-item .date {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .summary-item .count {
+      color: #666;
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 <body>
-  <div class="chat-container">
-    <div class="nav-links">
-      <a href="/calendar" class="nav-link">📅 日历</a>
-      <a href="/viz" class="nav-link">📊 数据中心</a>
-    </div>
-    <div class="chat-header">
-      <h1>🤖 AI 人生合伙人</h1>
-      <p>用第一性原理驱动的进化式人生助手</p>
-    </div>
+  <div class="main-container">
+    <div class="chat-container">
+      <div class="chat-header">
+        <h1>🤖 AI 人生合伙人</h1>
+        <p>用第一性原理驱动的进化式人生助手</p>
+      </div>
 
     <div class="chat-messages" id="chatMessages">
       <div class="message assistant">
@@ -286,6 +414,30 @@
       <div class="chat-input-wrapper">
         <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off">
         <button id="sendBtn">发送</button>
+      </div>
+    </div>
+    </div>
+
+    <!-- 日历侧边栏 -->
+    <div class="calendar-panel">
+      <div class="calendar-panel-header">
+        <span>📅 日历</span>
+        <a href="/calendar" class="nav-link" style="font-size:0.8rem;padding:4px 10px;">查看全部</a>
+      </div>
+
+      <div class="mini-nav">
+        <button onclick="prevMonth()">上月</button>
+        <button onclick="goToToday()">今天</button>
+        <button onclick="nextMonth()">下月</button>
+      </div>
+
+      <div id="miniCalendar" class="calendar-mini">
+        <!-- 日历由 JS 生成 -->
+      </div>
+
+      <div class="day-summary" id="daySummary">
+        <h4>当日概况</h4>
+        <p style="color:#999;font-size:0.85rem;">点击日期查看详情</p>
       </div>
     </div>
   </div>
@@ -444,6 +596,165 @@
 
     // 页面加载完成后聚焦输入框
     messageInput.focus();
+
+    // ========== 日历功能 ==========
+    let calendarDate = new Date();
+    let calendarEntries = {};
+
+    // 渲染迷你日历
+    function renderMiniCalendar() {
+      const year = calendarDate.getFullYear();
+      const month = calendarDate.getMonth();
+      const container = document.getElementById('miniCalendar');
+
+      if (!container) return;
+
+      // 星期标题
+      const headers = ['日', '一', '二', '三', '四', '五', '六'];
+      let html = headers.map(h => `<div class="day-header">${h}</div>`).join('');
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const firstDayOfWeek = firstDay.getDay();
+      const totalDays = lastDay.getDate();
+      const prevMonthLastDay = new Date(year, month, 0).getDate();
+
+      const today = new Date();
+      const todayStr = formatDate(today);
+
+      // 上个月日期
+      for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+        html += `<div class="day other-month">${prevMonthLastDay - i}</div>`;
+      }
+
+      // 当月日期
+      for (let day = 1; day <= totalDays; day++) {
+        const date = new Date(year, month, day);
+        const dateStr = formatDate(date);
+        let classes = 'day';
+
+        if (dateStr === todayStr) classes += ' today';
+        if (calendarEntries[dateStr]) classes += ' has-activity';
+
+        html += `<div class="${classes}" onclick="selectDay('${dateStr}')">${day}</div>`;
+      }
+
+      // 下个月日期
+      const remaining = 42 - (firstDayOfWeek + totalDays);
+      for (let day = 1; day <= remaining; day++) {
+        html += `<div class="day other-month">${day}</div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    // 格式化日期
+    function formatDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // 切换月份
+    function prevMonth() {
+      calendarDate.setMonth(calendarDate.getMonth() - 1);
+      loadCalendarEntries();
+    }
+
+    function nextMonth() {
+      calendarDate.setMonth(calendarDate.getMonth() + 1);
+      loadCalendarEntries();
+    }
+
+    function goToToday() {
+      calendarDate = new Date();
+      loadCalendarEntries();
+    }
+
+    // 加载日历条目
+    async function loadCalendarEntries() {
+      const year = calendarDate.getFullYear();
+      const month = calendarDate.getMonth() + 1;
+
+      try {
+        const response = await fetch(`/api/calendar/entries?year=${year}&month=${month}`, {
+          headers: getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {},
+        });
+        const result = await response.json();
+        if (result.success) {
+          calendarEntries = result.data.entries;
+        }
+        renderMiniCalendar();
+      } catch (error) {
+        console.error('加载日历失败:', error);
+      }
+    }
+
+    // 选择日期
+    async function selectDay(dateStr) {
+      const summary = document.getElementById('daySummary');
+      if (!summary) return;
+
+      summary.innerHTML = '<p style="color:#999;">加载中...</p>';
+
+      try {
+        const response = await fetch(`/api/calendar/entry/${dateStr}`, {
+          headers: getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {},
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          const { entry, completedTasks, conversations } = result.data;
+
+          let html = `<h4>${dateStr} 概况</h4>`;
+
+          // 完成任务
+          html += '<div class="summary-item">';
+          html += `<div class="date">✅ 完成任务</div>`;
+          html += `<div class="count">${completedTasks?.length || 0} 项</div>`;
+          if (completedTasks?.length > 0) {
+            completedTasks.forEach(t => {
+              html += `<div style="font-size:0.8rem;color:#666;margin-top:4px;">• ${escapeHtml(t.description)}</div>`;
+            });
+          }
+          html += '</div>';
+
+          // 对话数量
+          html += '<div class="summary-item">';
+          html += `<div class="date">💬 对话</div>`;
+          html += `<div class="count">${conversations?.length || 0} 条</div>`;
+          html += '</div>';
+
+          // 日记
+          html += '<div class="summary-item">';
+          html += `<div class="date">📝 日记</div>`;
+          html += `<div class="count">${entry ? '已记录' : '无记录'}</div>`;
+          if (entry) {
+            html += `<div style="font-size:0.8rem;color:#666;margin-top:4px;">${escapeHtml(entry.content.substring(0, 50))}...</div>`;
+          }
+          html += '</div>';
+
+          // 查看详情按钮
+          html += `<a href="/calendar" style="display:block;text-align:center;color:#667eea;text-decoration:none;padding:8px;font-size:0.85rem;">查看完整日历 →</a>`;
+
+          summary.innerHTML = html;
+        }
+      } catch (error) {
+        summary.innerHTML = '<p style="color:#f44336;">加载失败</p>';
+      }
+    }
+
+    // 转义 HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      if (!text) return '';
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // 初始化日历
+    loadCalendarEntries();
   </script>
 </body>
 </html>
