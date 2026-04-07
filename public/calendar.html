@@ -468,6 +468,23 @@
       transform: translateY(-2px);
       box-shadow: 0 5px 20px rgba(17,153,142,0.4);
     }
+    .btn-ai-polish {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+    }
+    .btn-ai-polish:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(240,147,251,0.4);
+    }
+    .btn-ai-expand {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      color: white;
+    }
+    .btn-ai-expand:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(79,172,254,0.4);
+    }
+    }
 
     .task-list, .conversation-list {
       list-style: none;
@@ -1030,6 +1047,11 @@
           } else {
             html += '<textarea id="entryTextarea" placeholder="记录今天的收获、感悟或重要事件..." oninput="updateWordCount()"></textarea>';
           }
+          // AI 优化按钮
+          html += '<div class="entry-actions" style="margin-top:10px;margin-bottom:0;">';
+          html += '<button class="btn-ai-polish" onclick="aiPolish()">✨ AI 润色</button>';
+          html += '<button class="btn-ai-expand" onclick="aiExpand()">🤖 AI 扩写</button>';
+          html += '</div>';
           html += '</div>';
 
           // 对话历史（倒序）
@@ -1087,6 +1109,11 @@
           html += '</div>';
           html += '<div class="word-count">字数：<span id="wordCount">0</span></div>';
           html += '<textarea id="entryTextarea" placeholder="记录今天的收获、感悟或重要事件..." oninput="updateWordCount()"></textarea>';
+          // AI 优化按钮
+          html += '<div class="entry-actions" style="margin-top:10px;margin-bottom:0;">';
+          html += '<button class="btn-ai-polish" onclick="aiPolish()">✨ AI 润色</button>';
+          html += '<button class="btn-ai-expand" onclick="aiExpand()">🤖 AI 扩写</button>';
+          html += '</div>';
           html += '<p style="color:#999;font-size:0.85rem;margin-top:10px;">💡 提示：每日 23:00 自动生成总结，也可随时手动编辑</p>';
           html += '</div>';
 
@@ -1168,6 +1195,109 @@
     // 快速生成今天
     async function generateToday() {
       await generateDailySummary(formatDate(new Date()));
+    }
+
+    // AI 润色：保持原意，优化表达
+    async function aiPolish() {
+      const textarea = document.getElementById('entryTextarea');
+      const content = textarea.value.trim();
+
+      if (!content || content.length < 10) {
+        alert('请先输入一些内容，AI 才能帮你润色~');
+        return;
+      }
+
+      const originalText = textarea.value;
+      textarea.placeholder = '✨ AI 正在润色中...';
+      textarea.disabled = true;
+
+      try {
+        const { AIService } = await import('../../services/ai/aiService');
+        const aiService = new AIService();
+
+        const prompt = `请帮我润色这篇日记，保持原意但让表达更流畅、更有文采。
+要求：
+1. 保持原文的核心信息和情感
+2. 优化语句流畅度
+3. 适当增加一些情感色彩
+4. 长度与原文相近
+5. 保持第一人称"我"的视角
+
+原文：
+${content}
+
+请直接输出润色后的版本，不要加任何说明。`;
+
+        const aiResponse = await aiService.chat([{ role: 'user', content: prompt }], {
+          maxTokens: 1000,
+          temperature: 0.5,
+        });
+
+        // 显示确认对话框
+        const useAi = confirm('✨ AI 润色完成！\n\n要替换为 AI 润色版吗？\n\n（取消可继续查看原文）');
+        if (useAi) {
+          textarea.value = aiResponse.content;
+          updateWordCount();
+        }
+      } catch (error) {
+        alert('AI 润色失败：' + error.message);
+        textarea.value = originalText;
+      } finally {
+        textarea.disabled = false;
+        textarea.placeholder = '';
+      }
+    }
+
+    // AI 扩写：基于内容深度延伸
+    async function aiExpand() {
+      const textarea = document.getElementById('entryTextarea');
+      const content = textarea.value.trim();
+
+      if (!content || content.length < 10) {
+        alert('请先输入一些内容，AI 才能帮你扩写~');
+        return;
+      }
+
+      const originalText = textarea.value;
+      textarea.placeholder = '🤖 AI 正在扩写中...';
+      textarea.disabled = true;
+
+      try {
+        const { AIService } = await import('../../services/ai/aiService');
+        const aiService = new AIService();
+
+        const prompt = `请帮我扩写这篇日记，在原文基础上进行深度延伸和思考。
+要求：
+1. 保留原文的核心内容
+2. 基于原文内容进行合理的延伸和深化
+3. 增加一些反思、感悟或启发
+4. 可以适当提问引发思考
+5. 保持第一人称"我"的视角
+6. 字数比原文增加 50%-100%
+
+原文：
+${content}
+
+请直接输出扩写后的版本，不要加任何说明。`;
+
+        const aiResponse = await aiService.chat([{ role: 'user', content: prompt }], {
+          maxTokens: 1500,
+          temperature: 0.7,
+        });
+
+        // 显示确认对话框
+        const useAi = confirm('🤖 AI 扩写完成！\n\n要替换为 AI 扩写版吗？\n\n（取消可继续查看原文）');
+        if (useAi) {
+          textarea.value = aiResponse.content;
+          updateWordCount();
+        }
+      } catch (error) {
+        alert('AI 扩写失败：' + error.message);
+        textarea.value = originalText;
+      } finally {
+        textarea.disabled = false;
+        textarea.placeholder = '';
+      }
     }
 
     // 保存日记
