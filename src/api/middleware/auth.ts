@@ -75,9 +75,10 @@ export function apiKeyAuth(req: Request, res: Response, next: NextFunction) {
 
 /**
  * 可选认证中间件
- * 如果有 API 密钥则验证，没有则跳过
+ * 如果有 API 密钥或 JWT 令牌则验证，没有则跳过
  */
 export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  // 尝试 API Key 认证
   const apiKey = req.headers['x-api-key'] as string;
   const expectedApiKey = process.env.API_KEY;
 
@@ -87,6 +88,26 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
       type: 'api_key',
       issuedAt: Date.now(),
     };
+    req.userId = 'api_user';
+    next();
+    return;
+  }
+
+  // 尝试 JWT 令牌认证
+  const authHeader = req.headers['authorization'];
+  const token = authHeader?.replace('Bearer ', '');
+
+  if (token) {
+    const payload = jwtService.verifyToken(token);
+    if (payload) {
+      req.auth = {
+        userId: payload.userId,
+        type: 'jwt',
+        issuedAt: payload.issuedAt,
+        expiresAt: payload.expiresAt,
+      };
+      req.userId = payload.userId;
+    }
   }
 
   next();
