@@ -978,6 +978,18 @@
 
           let html = '';
 
+          // 操作按钮（顶部）
+          html += '<div class="entry-actions" style="margin-bottom:20px;margin-top:0;">';
+          html += '<button class="btn-save" onclick="saveEntry(\'' + dateStr + '\')">💾 保存日记</button>';
+          if (!entry) {
+            html += '<button class="btn-generate" onclick="generateDailySummary(\'' + dateStr + '\')">✨ AI 生成</button>';
+          }
+          if (entry) {
+            html += '<button class="btn-delete" onclick="deleteEntry(\'' + dateStr + '\')">🗑️ 删除</button>';
+          }
+          html += '<button class="btn-cancel" onclick="closeModal()">取消</button>';
+          html += '</div>';
+
           // 完成任务列表
           html += '<div class="day-section">';
           html += '<h4>✅ 完成的任务 <span style="color:#999;font-size:0.85rem;">(' + completedTasks.length + '项)</span></h4>';
@@ -1037,18 +1049,6 @@
           }
           html += '</div>';
 
-          // 操作按钮
-          html += '<div class="entry-actions">';
-          html += '<button class="btn-save" onclick="saveEntry(\'' + dateStr + '\')">💾 保存日记</button>';
-          if (!entry) {
-            html += '<button class="btn-generate" onclick="generateDailySummary(\'' + dateStr + '\')">✨ AI 生成</button>';
-          }
-          if (entry) {
-            html += '<button class="btn-delete" onclick="deleteEntry(\'' + dateStr + '\')">🗑️ 删除</button>';
-          }
-          html += '<button class="btn-cancel" onclick="closeModal()">取消</button>';
-          html += '</div>';
-
           modalContent.innerHTML = html;
         } else {
           // 没有数据也显示编辑界面
@@ -1056,6 +1056,13 @@
           const conversations = result.data?.conversations || [];
 
           let html = '';
+
+          // 操作按钮（顶部）
+          html += '<div class="entry-actions" style="margin-bottom:20px;margin-top:0;">';
+          html += '<button class="btn-save" onclick="saveEntry(\'' + dateStr + '\')">💾 保存日记</button>';
+          html += '<button class="btn-generate" onclick="generateDailySummary(\'' + dateStr + '\')">✨ AI 生成</button>';
+          html += '<button class="btn-cancel" onclick="closeModal()">取消</button>';
+          html += '</div>';
 
           html += '<div class="day-section"><h4>✅ 完成的任务 (' + completedTasks.length + '项)</h4>';
           if (completedTasks.length > 0) {
@@ -1095,12 +1102,6 @@
           } else {
             html += '<p class="empty-tip">今天没有与 AI 对话</p>';
           }
-          html += '</div>';
-
-          html += '<div class="entry-actions">';
-          html += '<button class="btn-save" onclick="saveEntry(\'' + dateStr + '\')">💾 保存日记</button>';
-          html += '<button class="btn-generate" onclick="generateDailySummary(\'' + dateStr + '\')">✨ AI 生成</button>';
-          html += '<button class="btn-cancel" onclick="closeModal()">取消</button>';
           html += '</div>';
 
           modalContent.innerHTML = html;
