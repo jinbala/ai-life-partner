@@ -1032,12 +1032,13 @@
           }
           html += '</div>';
 
-          // 对话历史
+          // 对话历史（倒序）
           html += '<div class="day-section">';
           html += '<h4>💬 对话历史 <span style="color:#999;font-size:0.85rem;">(' + conversations.length + '条)</span></h4>';
           if (conversations.length > 0) {
             html += '<ul class="conversation-list">';
-            conversations.forEach(function(conv) {
+            // 反转数组，最新的在最上面
+            conversations.slice().reverse().forEach(function(conv) {
               const roleClass = conv.role === 'user' ? 'user' : 'assistant';
               const roleName = conv.role === 'user' ? '👤 我' : '🤖 AI';
               const content = conv.content.length > 100 ? conv.content.substring(0, 100) + '...' : conv.content;
@@ -1092,7 +1093,8 @@
           html += '<div class="day-section"><h4>💬 对话历史 (' + conversations.length + '条)</h4>';
           if (conversations.length > 0) {
             html += '<ul class="conversation-list">';
-            conversations.forEach(function(conv) {
+            // 反转数组，最新的在最上面
+            conversations.slice().reverse().forEach(function(conv) {
               const roleClass = conv.role === 'user' ? 'user' : 'assistant';
               const roleName = conv.role === 'user' ? '👤 我' : '🤖 AI';
               const content = conv.content.length > 100 ? conv.content.substring(0, 100) + '...' : conv.content;
