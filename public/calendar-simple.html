@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日历日记 - 简化版</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 1.5rem; }
+    .header-nav a {
+      color: white;
+      text-decoration: none;
+      padding: 8px 16px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 20px;
+      font-size: 0.9rem;
+      margin-left: 10px;
+    }
+    .calendar-container { padding: 30px; }
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .calendar-nav button {
+      padding: 8px 16px;
+      border: none;
+      background: #667eea;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      margin-left: 10px;
+    }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+    }
+    .calendar-day-header {
+      text-align: center;
+      padding: 10px;
+      font-weight: 600;
+      color: #666;
+    }
+    .calendar-day {
+      aspect-ratio: 1;
+      border: 2px solid #e9ecef;
+      border-radius: 12px;
+      padding: 10px;
+      cursor: pointer;
+      text-align: center;
+      font-weight: 500;
+    }
+    .calendar-day:hover { border-color: #667eea; }
+    .calendar-day.today {
+      border-color: #667eea;
+      background: rgba(102,126,234,0.1);
+      font-weight: 700;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 20px;
+      width: 90%;
+      max-width: 500px;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📅 日历日记</h1>
+      <div class="header-nav">
+        <a href="/chat">💬 聊天</a>
+        <a href="/viz">📊 数据</a>
+      </div>
+    </div>
+    <div class="calendar-container">
+      <div class="calendar-header">
+        <h2 id="monthTitle"></h2>
+        <div class="calendar-nav">
+          <button onclick="prevMonth()">上月</button>
+          <button onclick="goToday()">今天</button>
+          <button onclick="nextMonth()">下月</button>
+        </div>
+      </div>
+      <div class="calendar-grid" id="calendar">
+        <div class="calendar-day-header">日</div>
+        <div class="calendar-day-header">一</div>
+        <div class="calendar-day-header">二</div>
+        <div class="calendar-day-header">三</div>
+        <div class="calendar-day-header">四</div>
+        <div class="calendar-day-header">五</div>
+        <div class="calendar-day-header">六</div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <h3 id="modalTitle"></h3>
+      <p id="modalContent" style="margin-top:15px;color:#666;"></p>
+      <button onclick="closeModal()" style="margin-top:15px;padding:8px 16px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;">关闭</button>
+    </div>
+  </div>
+  <script>
+    console.log('[Simple Calendar] 页面加载');
+    let cur = new Date();
+    function render() {
+      const monthNames = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
+      document.getElementById('monthTitle').textContent = cur.getFullYear() + '年 ' + monthNames[cur.getMonth()];
+      const cal = document.getElementById('calendar');
+      // 清除旧日期
+      cal.querySelectorAll('.calendar-day').forEach(d => d.remove());
+      const firstDay = new Date(cur.getFullYear(), cur.getMonth(), 1);
+      const lastDay = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+      const startIdx = firstDay.getDay();
+      const today = new Date();
+      for (let i = 1; i <= lastDay.getDate(); i++) {
+        const d = document.createElement('div');
+        d.className = 'calendar-day';
+        d.textContent = i;
+        const dateStr = cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(i).padStart(2,'0');
+        if (dateStr === today.toISOString().slice(0,10)) d.classList.add('today');
+        d.onclick = () => openModal(dateStr);
+        cal.appendChild(d);
+      }
+      console.log('[Simple Calendar] 渲染完成');
+    }
+    function prevMonth() { cur.setMonth(cur.getMonth()-1); render(); }
+    function nextMonth() { cur.setMonth(cur.getMonth()+1); render(); }
+    function goToday() { cur = new Date(); render(); }
+    function openModal(date) {
+      document.getElementById('modalTitle').textContent = date;
+      document.getElementById('modalContent').textContent = '这是 ' + date + ' 的日记';
+      document.getElementById('modal').classList.add('active');
+    }
+    function closeModal() { document.getElementById('modal').classList.remove('active'); }
+    render();
+  </script>
+</body>
+</html>
