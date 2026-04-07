@@ -222,10 +222,15 @@
       font-family: monospace;
     }
 
-    .nav-link {
+    .nav-links {
       position: absolute;
       top: 20px;
       right: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .nav-link {
       background: rgba(255,255,255,0.2);
       color: white;
       padding: 8px 16px;
@@ -242,7 +247,10 @@
 </head>
 <body>
   <div class="chat-container">
-    <a href="/viz" class="nav-link">📊 数据中心</a>
+    <div class="nav-links">
+      <a href="/calendar" class="nav-link">📅 日历</a>
+      <a href="/viz" class="nav-link">📊 数据中心</a>
+    </div>
     <div class="chat-header">
       <h1>🤖 AI 人生合伙人</h1>
       <p>用第一性原理驱动的进化式人生助手</p>

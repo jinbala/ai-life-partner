@@ -27,6 +27,9 @@ import { DataExportService } from './services/export';
 import { requestLogger, requestId } from './api/middleware';
 import { healthRoutes, chatRoutes, feishuRoutes, visualizationRoutes, authRoutes, calendarRoutes } from './api/routes';
 
+// Repository
+import { DailyTaskRepository, ConversationHistoryRepository, ReviewRepository } from './database/repositories';
+
 // 工具
 import { logger, setLogFile, cleanupOldLogs } from './utils/logger';
 
@@ -339,6 +342,29 @@ async function handleUserMessage(
 
   await feishuMessageService.sendTextMessage(openId, response.content);
   await sessionService.addMessage(userId, 'assistant', response.content);
+
+  // 异步记录对话到历史表（用于日历显示）
+  const today = new Date().toISOString().split('T')[0];
+  const convRepo = new ConversationHistoryRepository();
+  convRepo.add(userId, 'user', content).catch(err => logger.warn('记录对话失败', err));
+  convRepo.add(userId, 'assistant', response.content).catch(err => logger.warn('记录对话失败', err));
+
+  // 检查用户是否表达了完成任务的意图，自动标记任务完成
+  const completePatterns = ['完成了', '做完了', '做好了', '搞定', '弄好了', '已完成'];
+  const isCompleteMessage = completePatterns.some(p => content.includes(p));
+
+  if (isCompleteMessage) {
+    const taskRepo = new DailyTaskRepository();
+    const todayTasks = await taskRepo.findByDate(userId, today);
+    // 查找匹配的任务并标记完成
+    for (const task of todayTasks) {
+      if (task.is_completed === 0 && content.includes(task.description)) {
+        await taskRepo.markAsCompleted(task.id);
+        logger.info('[Server] 自动标记任务完成', { taskId: task.id, description: task.description });
+        break;
+      }
+    }
+  }
 
   // 异步分析对话并更新画像（每 5 次对话分析一次）
   const fullHistory = session.conversationHistory;

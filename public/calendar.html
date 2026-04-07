@@ -353,6 +353,81 @@
       background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
       color: #667eea;
     }
+
+    .day-detail {
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    .day-detail:last-child {
+      border-bottom: none;
+    }
+
+    .day-detail h4 {
+      font-size: 0.95rem;
+      color: #667eea;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .task-list, .conversation-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .task-list li {
+      padding: 8px 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .task-list li::before {
+      content: '✅';
+      font-size: 0.9rem;
+    }
+
+    .conversation-list li {
+      padding: 8px 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+    }
+
+    .conversation-list li.user {
+      border-left: 3px solid #667eea;
+    }
+
+    .conversation-list li.assistant {
+      border-left: 3px solid #28a745;
+    }
+
+    .conversation-list .role {
+      font-weight: 600;
+      margin-right: 8px;
+    }
+
+    .conversation-list .role.user {
+      color: #667eea;
+    }
+
+    .conversation-list .role.assistant {
+      color: #28a745;
+    }
+
+    .empty-tip {
+      color: #999;
+      font-size: 0.9rem;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -578,43 +653,72 @@
 
         if (result.success) {
           const entry = result.data.entry;
-          modalContent.innerHTML = `
-            <div class="entry-content">
-              <textarea id="entryTextarea" placeholder="写下今天的记录...">${entry ? entry.content : ''}</textarea>
-            </div>
-            <div class="entry-actions">
-              <button class="btn-save" onclick="saveEntry('${dateStr}')">💾 保存</button>
-              ${entry ? '<button class="btn-delete" onclick="deleteEntry(\'' + dateStr + '\')">🗑️ 删除</button>' : ''}
-              <button class="btn-cancel" onclick="closeModal()">取消</button>
-            </div>
-            ${entry ? `
-            <div class="summary-section">
-              <h4>📌 AI 摘要</h4>
-              <div class="summary-tags">
-                <span class="summary-tag ai">${escapeHtml(entry.summary || '暂无摘要')}</span>
-              </div>
-            </div>
-            ` : ''}
-          `;
+          const completedTasks = result.data.completedTasks || [];
+          const conversations = result.data.conversations || [];
+
+          let html = '';
+
+          // 完成任务列表
+          html += '<div class="day-detail">';
+          html += '<h4>✅ 完成的任务</h4>';
+          if (completedTasks.length > 0) {
+            html += '<ul class="task-list">';
+            completedTasks.forEach(task => {
+              html += `<li>${escapeHtml(task.description)}</li>`;
+            });
+            html += '</ul>';
+          } else {
+            html += '<p class="empty-tip">今天没有完成任何任务</p>';
+          }
+          html += '</div>';
+
+          // 日记内容
+          html += '<div class="day-detail">';
+          html += '<h4>📝 日记</h4>';
+          html += `<div class="entry-content">
+            <textarea id="entryTextarea" placeholder="写下今天的记录...">${entry ? entry.content : ''}</textarea>
+          </div>`;
+          html += '</div>';
+
+          // 对话历史
+          html += '<div class="day-detail">';
+          html += '<h4>💬 对话历史</h4>';
+          if (conversations.length > 0) {
+            html += '<ul class="conversation-list">';
+            conversations.forEach(conv => {
+              const roleClass = conv.role === 'user' ? 'user' : 'assistant';
+              const roleName = conv.role === 'user' ? '我' : 'AI';
+              html += `<li class="${roleClass}">
+                <span class="role ${roleClass}">${roleName}:</span>
+                ${escapeHtml(conv.content)}
+              </li>`;
+            });
+            html += '</ul>';
+          } else {
+            html += '<p class="empty-tip">今天没有对话</p>';
+          }
+          html += '</div>';
+
+          // 操作按钮
+          html += `<div class="entry-actions">
+            <button class="btn-save" onclick="saveEntry('${dateStr}')">💾 保存日记</button>
+            ${entry ? '<button class="btn-delete" onclick="deleteEntry(\'' + dateStr + '\')">🗑️ 删除</button>' : ''}
+            <button class="btn-cancel" onclick="closeModal()">取消</button>
+          </div>`;
+
+          modalContent.innerHTML = html;
         } else {
           modalContent.innerHTML = `
             <div class="empty-state">
               <div class="empty-state-icon">📝</div>
-              <p>暂无日记，点击"保存"创建第一篇</p>
-            </div>
-            <div class="entry-content">
-              <textarea id="entryTextarea" placeholder="写下今天的记录..."></textarea>
-            </div>
-            <div class="entry-actions">
-              <button class="btn-save" onclick="saveEntry('${dateStr}')">💾 保存</button>
-              <button class="btn-cancel" onclick="closeModal()">取消</button>
+              <p>暂无记录</p>
             </div>
           `;
         }
       } catch (error) {
         modalContent.innerHTML = `
           <div class="empty-state">
-            <p>加载失败，请重试</p>
+            <p>加载失败：${error.message}</p>
           </div>
         `;
       }

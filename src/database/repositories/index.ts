@@ -13,3 +13,4 @@ export * from './challengeRepository';
 export * from './reviewRepository';
 export * from './sessionRepository';
 export * from './tokenUsageRepository';
+export * from './conversationHistoryRepository';

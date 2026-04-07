@@ -134,9 +134,15 @@ router.post('/message', optionalAuth, async (req: Request, res: Response) => {
     // 添加 AI 响应到历史
     conversationHistory.push({ role: 'assistant', content: aiResponse.content });
 
-    // 保存到会话管理器（异步，不阻塞响应）
+    // 添加到会话管理器（异步，不阻塞响应）
     await sessionManager.addMessage(sessionId, 'user', message);
     await sessionManager.addMessage(sessionId, 'assistant', aiResponse.content);
+
+    // 记录对话到历史表（用于日历显示）
+    const { ConversationHistoryRepository } = await import('../../database/repositories');
+    const convRepo = new ConversationHistoryRepository();
+    convRepo.add(userId, 'user', message).catch(err => logger.warn('记录对话失败', err));
+    convRepo.add(userId, 'assistant', aiResponse.content).catch(err => logger.warn('记录对话失败', err));
 
     // 异步分析对话并更新画像（不阻塞响应）
     // 每 5 次对话分析一次，减少 API 调用

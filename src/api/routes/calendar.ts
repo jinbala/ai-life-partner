@@ -4,7 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import { sessionAuth } from '../middleware/auth';
-import { ReviewRepository } from '../../database/repositories';
+import { ReviewRepository, DailyTaskRepository, ConversationHistoryRepository } from '../../database/repositories';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -52,7 +52,7 @@ router.get('/entries', sessionAuth, async (req: Request, res: Response) => {
 
 /**
  * GET /api/calendar/entry/:date
- * 获取指定日期的日记
+ * 获取指定日期的详细信息（日记 + 完成任务 + 对话摘要）
  */
 router.get('/entry/:date', sessionAuth, async (req: Request, res: Response) => {
   const userId = req.userId;
@@ -60,31 +60,47 @@ router.get('/entry/:date', sessionAuth, async (req: Request, res: Response) => {
 
   try {
     const reviewRepo = new ReviewRepository();
-    const reviews = await reviewRepo.findByType(userId, 'daily');
+    const taskRepo = new DailyTaskRepository();
+    const conversationRepo = new ConversationHistoryRepository();
 
+    // 获取日记
+    const reviews = await reviewRepo.findByType(userId, 'daily');
     const entry = reviews.find(r => r.period_start === date);
 
-    if (entry) {
-      res.json({
-        success: true,
-        data: {
-          entry: {
-            id: entry.id,
-            date: entry.period_start,
-            content: entry.content,
-            summary: entry.content?.substring(0, 100) + '...' || '',
-            createdAt: entry.created_at,
-          },
-        },
-      });
-    } else {
-      res.json({ success: true, data: { entry: null } });
-    }
+    // 获取当天完成的任务
+    const tasks = await taskRepo.findByDate(userId, String(date));
+    const completedTasks = tasks.filter(t => t.is_completed === 1);
+
+    // 获取当天对话历史
+    const conversations = await conversationRepo.findByDate(userId, String(date));
+
+    res.json({
+      success: true,
+      data: {
+        entry: entry ? {
+          id: entry.id,
+          date: entry.period_start,
+          content: entry.content,
+          summary: entry.content?.substring(0, 100) + '...' || '',
+          createdAt: entry.created_at,
+        } : null,
+        completedTasks: completedTasks.map(t => ({
+          id: t.id,
+          description: t.description,
+          completedAt: t.completed_at,
+        })),
+        conversations: conversations.slice(0, 20).map(c => ({
+          role: c.role,
+          content: c.content.substring(0, 200) + '...',
+          createdAt: c.created_at,
+        })),
+      },
+    });
   } catch (error) {
-    logger.error('[Calendar] 获取日记失败', error);
+    logger.error('[Calendar] 获取日记详情失败', error);
     res.status(500).json({
       success: false,
-      error: { message: '获取日记失败' },
+      error: { message: '获取日记详情失败' },
     });
   }
 });
