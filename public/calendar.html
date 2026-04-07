@@ -519,6 +519,14 @@
     .btn-ai-cancel:hover {
       background: #dee2e6;
     }
+    .btn-ai-regenerate {
+      background: linear-gradient(135deg, #f5af19 0%, #f12711 100%);
+      color: white;
+    }
+    .btn-ai-regenerate:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(245,175,25,0.4);
+    }
 
     .entry-actions {
       display: flex;
@@ -785,6 +793,12 @@
     let entries = {};
     let tasksByDate = {};
     let currentStreak = 0;
+    // AI 对比数据（全局变量）
+    let aiComparisonData = {
+      original: '',
+      aiVersion: '',
+      textareaId: ''
+    };
 
     // 获取令牌
     function getToken() {
@@ -1309,6 +1323,14 @@
       const modalContent = document.getElementById('modalContent');
       const originalText = textarea.value;
 
+      // 存储到全局变量
+      aiComparisonData = {
+        original: originalText,
+        aiVersion: '',
+        textareaId: textarea.id,
+        type: '润色'
+      };
+
       // 显示加载动画
       modalContent.innerHTML = '<div class="ai-loading">' +
         '<div class="ai-loading-spinner"></div>' +
@@ -1353,6 +1375,14 @@
       const modalContent = document.getElementById('modalContent');
       const originalText = textarea.value;
 
+      // 存储到全局变量
+      aiComparisonData = {
+        original: originalText,
+        aiVersion: '',
+        textareaId: textarea.id,
+        type: '扩写'
+      };
+
       // 显示加载动画
       modalContent.innerHTML = '<div class="ai-loading">' +
         '<div class="ai-loading-spinner"></div>' +
@@ -1386,6 +1416,14 @@
 
     // 显示 AI 对比预览
     function showAiComparison(original, aiVersion, type, textarea) {
+      // 存储到全局变量
+      aiComparisonData = {
+        original: original,
+        aiVersion: aiVersion,
+        textareaId: textarea.id,
+        type: type
+      };
+
       const modalContent = document.getElementById('modalContent');
       modalContent.innerHTML = '<div class="ai-comparison">' +
         '<div class="ai-comparison-panel original">' +
@@ -1398,45 +1436,113 @@
         '</div>' +
         '</div>' +
         '<div class="ai-comparison-actions">' +
-          '<button class="btn-ai-use" onclick="useAiVersion(this, \'' + type + '\')">✅ 使用 AI 版本</button>' +
-          '<button class="btn-ai-cancel" onclick="restoreFromComparison(this)">❌ 保留原文</button>' +
+          '<button class="btn-ai-use" onclick="useAiVersion()">✅ 使用 AI 版本</button>' +
+          '<button class="btn-ai-cancel" onclick="restoreFromComparison()">❌ 保留原文</button>' +
+          '<button class="btn-ai-regenerate" onclick="regenerateAi(\'' + type + '\')">🔄 重新生成</button>' +
         '</div>';
-
-      // 存储原文和 AI 版本供按钮使用
-      modalContent.dataset.original = original;
-      modalContent.dataset.aiVersion = aiVersion;
-      modalContent.dataset.textareaId = textarea.id;
     }
 
     // 使用 AI 版本
-    window.useAiVersion = function(btn, type) {
-      const modalContent = document.getElementById('modalContent');
-      const textareaId = modalContent.dataset.textareaId;
-      const aiVersion = modalContent.dataset.aiVersion;
-      const textarea = document.getElementById(textareaId);
-
-      textarea.value = aiVersion;
-      updateWordCount();
-      alert('✨ 已采用 AI ' + type + '版本！');
+    window.useAiVersion = function() {
+      const textarea = document.getElementById(aiComparisonData.textareaId);
+      if (textarea && aiComparisonData.aiVersion) {
+        textarea.value = aiComparisonData.aiVersion;
+        updateWordCount();
+        alert('✨ 已采用 AI ' + aiComparisonData.type + '版本！');
+      }
       closeModal();
     };
 
     // 恢复原文
-    window.restoreFromComparison = function(btn) {
-      const modalContent = document.getElementById('modalContent');
-      const textareaId = modalContent.dataset.textareaId;
-      const original = modalContent.dataset.original;
-      const textarea = document.getElementById(textareaId);
-
-      textarea.value = original;
-      updateWordCount();
+    window.restoreFromComparison = function() {
+      const textarea = document.getElementById(aiComparisonData.textareaId);
+      if (textarea && aiComparisonData.original) {
+        textarea.value = aiComparisonData.original;
+        updateWordCount();
+      }
       closeModal();
+    };
+
+    // 重新生成
+    window.regenerateAi = function(type) {
+      const modalContent = document.getElementById('modalContent');
+      const content = aiComparisonData.original;
+
+      // 显示加载动画
+      modalContent.innerHTML = '<div class="ai-loading">' +
+        '<div class="ai-loading-spinner"></div>' +
+        '<div class="ai-loading-text">🔄 AI 正在重新生成中，请稍候...</div>' +
+        '</div>';
+
+      if (type === '润色') {
+        aiPolishApi(content);
+      } else {
+        aiExpandApi(content);
+      }
     };
 
     // 恢复文本框状态
     function restoreTextarea(textarea, originalText) {
       textarea.disabled = false;
       textarea.placeholder = '';
+    }
+
+    // AI 润色 API 调用（供重新生成使用）
+    async function aiPolishApi(content) {
+      try {
+        const response = await fetch('/api/calendar/ai-polish', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+          },
+          body: JSON.stringify({ content }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          aiComparisonData.aiVersion = result.data.content;
+          showAiComparison(aiComparisonData.original, result.data.content, '润色', { id: aiComparisonData.textareaId });
+        } else {
+          alert('润色失败：' + (result.error?.message || '请稍后重试'));
+          restoreTextarea(document.getElementById(aiComparisonData.textareaId), aiComparisonData.original);
+          closeModal();
+        }
+      } catch (error) {
+        alert('AI 润色失败：' + error.message);
+        restoreTextarea(document.getElementById(aiComparisonData.textareaId), aiComparisonData.original);
+        closeModal();
+      }
+    }
+
+    // AI 扩写 API 调用（供重新生成使用）
+    async function aiExpandApi(content) {
+      try {
+        const response = await fetch('/api/calendar/ai-expand', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+          },
+          body: JSON.stringify({ content }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          aiComparisonData.aiVersion = result.data.content;
+          showAiComparison(aiComparisonData.original, result.data.content, '扩写', { id: aiComparisonData.textareaId });
+        } else {
+          alert('扩写失败：' + (result.error?.message || '请稍后重试'));
+          restoreTextarea(document.getElementById(aiComparisonData.textareaId), aiComparisonData.original);
+          closeModal();
+        }
+      } catch (error) {
+        alert('AI 扩写失败：' + error.message);
+        restoreTextarea(document.getElementById(aiComparisonData.textareaId), aiComparisonData.original);
+        closeModal();
+      }
     }
 
     // 保存日记
