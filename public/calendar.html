@@ -1315,8 +1315,8 @@
       const textarea = document.getElementById('entryTextarea');
       const content = textarea.value.trim();
 
-      if (!content || content.length < 10) {
-        alert('请先输入一些内容，AI 才能帮你润色~');
+      if (!content || content.length < 30) {
+        alert('内容太短啦~ 至少输入 30 字才能让 AI 润色哦（当前：' + content.length + '字）');
         return;
       }
 
@@ -1368,8 +1368,8 @@
       const textarea = document.getElementById('entryTextarea');
       const content = textarea.value.trim();
 
-      if (!content || content.length < 10) {
-        alert('请先输入一些内容，AI 才能帮你扩写~');
+      if (!content || content.length < 30) {
+        alert('内容太短啦~ 至少输入 30 字才能让 AI 扩写哦（当前：' + content.length + '字）');
         return;
       }
 
@@ -1583,16 +1583,19 @@
         const result = await response.json();
 
         if (result.success) {
+          // 更新本地缓存
+          entries[dateStr] = { content: content, mood: mood };
+
           if (saveContent !== undefined) {
-            // AI 保存后关闭弹窗，刷新日历
+            // AI 保存后关闭弹窗，重新加载日历数据
             alert('✨ AI ' + aiComparisonData.type + '已保存！');
-            entries[dateStr] = { content: content, mood: mood };
+            await loadEntries(); // 重新从服务器加载日记列表
             renderCalendar();
             closeModal();
           } else {
             // 手动保存后刷新弹窗
             alert('保存成功！');
-            entries[dateStr] = { content: content, mood: mood };
+            await loadEntries(); // 重新从服务器加载日记列表
             renderCalendar();
             openDayModal(selectedDate);
           }
