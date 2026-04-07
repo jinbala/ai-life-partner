@@ -112,7 +112,7 @@ router.get('/entry/:date', sessionAuth, async (req: Request, res: Response) => {
 router.post('/entry/:date', sessionAuth, async (req: Request, res: Response) => {
   const userId = req.userId;
   const date = req.params.date;
-  const { content } = req.body;
+  const { content, mood } = req.body;
 
   if (!content || !content.trim()) {
     return res.status(400).json({
@@ -131,8 +131,7 @@ router.post('/entry/:date', sessionAuth, async (req: Request, res: Response) => 
       // 更新现有日记
       entry = await reviewRepo.update(existingEntry.id, content.trim());
     } else {
-      // 创建新日记 - 使用 findById 查找已有的或者新建
-      // 由于 create 方法会生成 id，我们需要先检查是否已存在
+      // 创建新日记
       const existingReviews = await reviewRepo.findByType(userId, 'daily');
       let existing = existingReviews.find(r => r.period_start === date);
 
@@ -159,6 +158,7 @@ router.post('/entry/:date', sessionAuth, async (req: Request, res: Response) => 
           id: entry.id,
           date: entry.period_start,
           content: entry.content,
+          mood: mood || null,
           summary: entry.content?.substring(0, 100) + '...' || '',
           createdAt: entry.created_at,
         },
@@ -201,6 +201,63 @@ router.delete('/entry/:date', sessionAuth, async (req: Request, res: Response) =
     res.status(500).json({
       success: false,
       error: { message: '删除日记失败' },
+    });
+  }
+});
+
+/**
+ * POST /api/calendar/generate/:date
+ * AI 生成日记摘要
+ */
+router.post('/generate/:date', sessionAuth, async (req: Request, res: Response) => {
+  const userId = req.userId;
+  const date = req.params.date;
+
+  try {
+    const taskRepo = new DailyTaskRepository();
+    const conversationRepo = new ConversationHistoryRepository();
+    const AIService = (await import('../../services/ai/aiService')).default;
+    const aiService = new AIService();
+
+    // 获取当天任务
+    const tasks = await taskRepo.findByDate(userId, String(date));
+    const completedTasks = tasks.filter(t => t.is_completed === 1);
+
+    // 获取当天对话
+    const conversations = await conversationRepo.findByDate(userId, String(date));
+
+    // 构建 AI 提示词
+    const prompt = `请根据用户${date}这天的数据，生成一篇日记摘要（200-300 字）：
+
+【完成的任务】
+${completedTasks.length > 0 ? completedTasks.map(t => `- ${t.description}`).join('\n') : '无'}
+
+【与 AI 的对话摘要】
+${conversations.length > 0 ? conversations.slice(0, 5).map(c => `${c.role === 'user' ? '用户' : 'AI'}: ${c.content.substring(0, 50)}...`).join('\n') : '无'}
+
+要求：
+1. 以第一人称"我"来写
+2. 语气温暖、积极向上
+3. 突出今天的收获和成长
+4. 如果没有数据和对话，就说"今天是平静的一天"，并鼓励用户记录生活`;
+
+    const aiResponse = await aiService.generate(prompt, {
+      maxTokens: 500,
+      temperature: 0.7,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        content: aiResponse.content,
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error('[Calendar] AI 生成日记失败', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'AI 生成失败，请稍后重试' },
     });
   }
 });
