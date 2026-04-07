@@ -420,15 +420,15 @@
 
     <!-- 日历侧边栏 -->
     <div class="calendar-panel">
-      <div class="calendar-panel-header">
+      <div class="calendar-panel-header" style="flex-direction:column;gap:10px;align-items:flex-start;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <span>📅 日历</span>
-          <div style="display:flex;gap:5px;">
-            <a href="/calendar.html" class="nav-link" style="font-size:0.75rem;padding:4px 8px;">📝 日记</a>
-            <a href="/viz.html" class="nav-link" style="font-size:0.75rem;padding:4px 8px;">📊 数据</a>
-          </div>
+          <span style="font-size:1.1rem;font-weight:600;color:#333;">📅 日历</span>
         </div>
-        <a href="/chat" class="nav-link" style="font-size:0.75rem;padding:4px 8px;">💬 聊天</a>
+        <div class="nav-links" style="margin:0;">
+          <a href="/calendar.html" class="nav-link" style="font-size:0.75rem;padding:4px 8px;">📝 日记</a>
+          <a href="/viz.html" class="nav-link" style="font-size:0.75rem;padding:4px 8px;">📊 数据中心</a>
+          <a href="/chat" class="nav-link" style="font-size:0.75rem;padding:4px 8px;">💬 聊天</a>
+        </div>
       </div>
 
       <div class="mini-nav">
