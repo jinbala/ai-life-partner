@@ -328,20 +328,27 @@
       if (!getToken()) {
         try {
           const userId = getUserId();
+          console.log('[Auth] 尝试获取令牌，userId:', userId);
           const response = await fetch('/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId }),
           });
+          console.log('[Auth] 响应状态:', response.status);
           const result = await response.json();
+          console.log('[Auth] 响应结果:', result);
           if (result.success) {
             localStorage.setItem('ai_partner_token', result.data.accessToken);
             localStorage.setItem('ai_partner_refresh_token', result.data.refreshToken);
             console.log('[Auth] 自动获取令牌成功');
+          } else {
+            console.error('[Auth] 获取令牌失败:', result.error);
           }
         } catch (error) {
           console.error('[Auth] 自动获取令牌失败:', error);
         }
+      } else {
+        console.log('[Auth] 使用已有令牌');
       }
     }
 
@@ -378,17 +385,20 @@
       const userId = getUserId();
       try {
         const response = await fetchWithAuth(`/api/viz/dashboard`);
+        console.log('[Viz] Dashboard API response status:', response.status);
         const result = await response.json();
 
         if (result.success) {
           renderStats(result.data);
           renderRadarChart(result.data.abilities?.radar);
         } else {
-          showError('加载数据失败');
+          console.error('[Viz] Dashboard API error:', result.error);
+          // 不显示错误横幅，只渲染空状态
+          renderEmptyStats();
         }
       } catch (error) {
-        console.error('加载数据失败:', error);
-        showError('网络错误，请稍后重试');
+        console.error('[Viz] 加载数据失败:', error);
+        renderEmptyStats();
       }
 
       // 单独加载成长曲线和目标进度
@@ -401,6 +411,29 @@
       loadTopicAnalysis();
       loadWeeklyReport();
       loadMonthlyReport();
+    }
+
+    // 渲染空状态统计卡片
+    function renderEmptyStats() {
+      const statsGrid = document.getElementById('statsGrid');
+      statsGrid.innerHTML = `
+        <div class="stat-card">
+          <div class="stat-label">目标总数</div>
+          <div class="stat-value">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">今日任务</div>
+          <div class="stat-value">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">平均能力分</div>
+          <div class="stat-value">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">7 日 Token</div>
+          <div class="stat-value">-</div>
+        </div>
+      `;
     }
 
     // 渲染统计卡片
@@ -977,9 +1010,13 @@
 
     // 显示错误
     function showError(message) {
-      document.getElementById('statsGrid').innerHTML = `
-        <div class="error" style="grid-column: 1 / -1;">${message}</div>
-      `;
+      // 在顶部显示错误横幅
+      const dashboard = document.querySelector('.dashboard');
+      const errorBanner = document.createElement('div');
+      errorBanner.className = 'error-banner';
+      errorBanner.style.cssText = 'background:#ffebee;color:#c62828;padding:15px;border-radius:8px;margin-bottom:20px;text-align:center;';
+      errorBanner.innerHTML = '⚠️ ' + message + '<button onclick="this.parentElement.remove();loadDashboard()" style="margin-left:15px;padding:5px 15px;background:#c62828;color:white;border:none;border-radius:4px;cursor:pointer;">重试</button>';
+      dashboard.insertBefore(errorBanner, dashboard.firstChild);
     }
 
     // 页面加载
