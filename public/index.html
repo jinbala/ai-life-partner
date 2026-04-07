@@ -702,6 +702,11 @@
         const response = await fetch(`/api/calendar/entry/${dateStr}`, {
           headers: getToken() ? { 'Authorization': `Bearer ${getToken()}` } : {},
         });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
         const result = await response.json();
 
         if (result.success) {
@@ -724,24 +729,39 @@
           html += '<div class="summary-item">';
           html += `<div class="date">💬 对话</div>`;
           html += `<div class="count">${conversations?.length || 0} 条</div>`;
+          if (conversations?.length > 0) {
+            html += '<div style="font-size:0.8rem;color:#666;margin-top:4px;max-height:100px;overflow-y:auto;">';
+            conversations.slice(0, 5).forEach(c => {
+              html += `<div>• ${c.role === 'user' ? '我' : 'AI'}: ${escapeHtml(c.content.substring(0, 50))}...</div>`;
+            });
+            if (conversations.length > 5) {
+              html += `<div style="color:#999;">还有 ${conversations.length - 5} 条对话...</div>`;
+            }
+            html += '</div>';
+          }
           html += '</div>';
 
           // 日记
           html += '<div class="summary-item">';
           html += `<div class="date">📝 日记</div>`;
-          html += `<div class="count">${entry ? '已记录' : '无记录'}</div>`;
           if (entry) {
-            html += `<div style="font-size:0.8rem;color:#666;margin-top:4px;">${escapeHtml(entry.content.substring(0, 50))}...</div>`;
+            html += `<div style="font-size:0.85rem;color:#333;margin-top:8px;padding:8px;background:#f8f9fa;border-radius:8px;">${escapeHtml(entry.content)}</div>`;
+          } else {
+            html += `<div class="count">无记录</div>`;
+            html += `<div style="font-size:0.8rem;color:#999;margin-top:4px;">每日 23:00 自动生成总结，也可手动编辑</div>`;
           }
           html += '</div>';
 
           // 查看详情按钮
-          html += `<a href="/calendar" style="display:block;text-align:center;color:#667eea;text-decoration:none;padding:8px;font-size:0.85rem;">查看完整日历 →</a>`;
+          html += `<a href="/calendar" style="display:block;text-align:center;color:#667eea;text-decoration:none;padding:8px;font-size:0.85rem;margin-top:10px;">查看完整日历 →</a>`;
 
           summary.innerHTML = html;
+        } else {
+          summary.innerHTML = `<p style="color:#f44336;">加载失败：${result.error?.message || '未知错误'}</p>`;
         }
       } catch (error) {
-        summary.innerHTML = '<p style="color:#f44336;">加载失败</p>';
+        console.error('加载日历详情失败:', error);
+        summary.innerHTML = `<p style="color:#f44336;">加载失败：${error.message}</p>`;
       }
     }
 
@@ -754,7 +774,11 @@
     }
 
     // 初始化日历
-    loadCalendarEntries();
+    console.log('[Calendar] 页面初始化');
+    ensureToken().then(() => {
+      console.log('[Calendar] Token 初始化完成');
+      loadCalendarEntries();
+    });
   </script>
 </body>
 </html>

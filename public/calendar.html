@@ -617,13 +617,23 @@
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
 
+      console.log('[Calendar] 加载日历数据:', { year, month });
+
       try {
         const response = await fetch(`/api/calendar/entries?year=${year}&month=${month}`, {
           headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
         const result = await response.json();
+        console.log('[Calendar] API 响应:', result);
+
         if (result.success) {
           entries = result.data.entries;
+          console.log('[Calendar] 日记条目:', Object.keys(entries).length);
         }
         renderCalendar();
       } catch (error) {
@@ -649,6 +659,11 @@
         const response = await fetch(`/api/calendar/entry/${dateStr}`, {
           headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
         const result = await response.json();
 
         if (result.success) {
@@ -675,9 +690,16 @@
           // 日记内容
           html += '<div class="day-detail">';
           html += '<h4>📝 日记</h4>';
-          html += `<div class="entry-content">
-            <textarea id="entryTextarea" placeholder="写下今天的记录...">${entry ? entry.content : ''}</textarea>
-          </div>`;
+          if (entry) {
+            html += `<div class="entry-content">
+              <textarea id="entryTextarea" placeholder="写下今天的记录...">${escapeHtml(entry.content)}</textarea>
+            </div>`;
+          } else {
+            html += `<div class="entry-content">
+              <textarea id="entryTextarea" placeholder="写下今天的记录..."></textarea>
+              <p style="color:#999;font-size:0.85rem;margin-top:8px;">每日 23:00 自动生成总结，也可手动编辑</p>
+            </div>`;
+          }
           html += '</div>';
 
           // 对话历史
@@ -708,17 +730,65 @@
 
           modalContent.innerHTML = html;
         } else {
-          modalContent.innerHTML = `
-            <div class="empty-state">
-              <div class="empty-state-icon">📝</div>
-              <p>暂无记录</p>
-            </div>
-          `;
+          // 即使没有数据也显示编辑界面
+          const entry = result.data?.entry || null;
+          const completedTasks = result.data?.completedTasks || [];
+          const conversations = result.data?.conversations || [];
+
+          let html = '';
+
+          html += '<div class="day-detail">';
+          html += '<h4>✅ 完成的任务</h4>';
+          if (completedTasks.length > 0) {
+            html += '<ul class="task-list">';
+            completedTasks.forEach(task => {
+              html += `<li>${escapeHtml(task.description)}</li>`;
+            });
+            html += '</ul>';
+          } else {
+            html += '<p class="empty-tip">今天没有完成任何任务</p>';
+          }
+          html += '</div>';
+
+          html += '<div class="day-detail">';
+          html += '<h4>📝 日记</h4>';
+          html += `<div class="entry-content">
+            <textarea id="entryTextarea" placeholder="写下今天的记录...">${entry ? escapeHtml(entry.content) : ''}</textarea>
+          </div>`;
+          html += '</div>';
+
+          html += '<div class="day-detail">';
+          html += '<h4>💬 对话历史</h4>';
+          if (conversations.length > 0) {
+            html += '<ul class="conversation-list">';
+            conversations.forEach(conv => {
+              const roleClass = conv.role === 'user' ? 'user' : 'assistant';
+              const roleName = conv.role === 'user' ? '我' : 'AI';
+              html += `<li class="${roleClass}">
+                <span class="role ${roleClass}">${roleName}:</span>
+                ${escapeHtml(conv.content)}
+              </li>`;
+            });
+            html += '</ul>';
+          } else {
+            html += '<p class="empty-tip">今天没有对话</p>';
+          }
+          html += '</div>';
+
+          html += `<div class="entry-actions">
+            <button class="btn-save" onclick="saveEntry('${dateStr}')">💾 保存日记</button>
+            <button class="btn-cancel" onclick="closeModal()">取消</button>
+          </div>`;
+
+          modalContent.innerHTML = html;
         }
       } catch (error) {
+        console.error('加载日历详情失败:', error);
         modalContent.innerHTML = `
           <div class="empty-state">
+            <div class="empty-state-icon">⚠️</div>
             <p>加载失败：${error.message}</p>
+            <button class="btn-cancel" onclick="closeModal()" style="margin-top:15px;">关闭</button>
           </div>
         `;
       }
@@ -810,7 +880,9 @@
     });
 
     // 初始化
+    console.log('[Calendar] 页面初始化');
     ensureToken().then(() => {
+      console.log('[Calendar] Token 初始化完成，token:', token ? '已获取' : '未获取');
       loadEntries();
     });
   </script>
