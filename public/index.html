@@ -422,13 +422,21 @@
     <div class="calendar-panel">
       <div class="calendar-panel-header">
         <span>📅 日历</span>
-        <a href="/calendar" class="nav-link" style="font-size:0.8rem;padding:4px 10px;">查看全部</a>
+        <div style="display:flex;gap:8px;">
+          <a href="/calendar.html" class="nav-link" style="font-size:0.8rem;padding:4px 10px;">📝 日记</a>
+          <a href="/viz.html" class="nav-link" style="font-size:0.8rem;padding:4px 10px;">📊 数据</a>
+          <a href="/chat" class="nav-link" style="font-size:0.8rem;padding:4px 10px;">💬 聊天</a>
+        </div>
       </div>
 
       <div class="mini-nav">
         <button onclick="prevMonth()">上月</button>
-        <button onclick="goToToday()">今天</button>
+        <button id="currentMonthLabel" style="background:#e9ecef;color:#333;cursor:default;flex:0.8;">4 月</button>
         <button onclick="nextMonth()">下月</button>
+      </div>
+
+      <div class="mini-nav" style="margin-top:8px;">
+        <button onclick="goToToday()" style="background:#28a745;">今天</button>
       </div>
 
       <div id="miniCalendar" class="calendar-mini">
@@ -608,6 +616,12 @@
       const container = document.getElementById('miniCalendar');
 
       if (!container) return;
+
+      // 更新月份标签
+      const monthLabel = document.getElementById('currentMonthLabel');
+      if (monthLabel) {
+        monthLabel.textContent = `${month + 1}月`;
+      }
 
       // 星期标题
       const headers = ['日', '一', '二', '三', '四', '五', '六'];
