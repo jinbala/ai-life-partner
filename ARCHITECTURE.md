@@ -207,8 +207,10 @@ aiService.chat(messages, { temperature: 0.1 });  // 低随机性
 
 ```typescript
 class SchedulerService {
-  private morningPushJob: ScheduledTask;   // 早 8:00
-  private reviewReminderJob: ScheduledTask; // 晚 9:00
+  private morningPushJob: ScheduledTask;      // 早 8:00
+  private reviewReminderJob: ScheduledTask;   // 晚 9:00
+  private dailySummaryJob: ScheduledTask;     // 晚 11:00
+  private conversationCleanupJob: ScheduledTask; // 每周日 2:00
 
   start(): void {
     // 每天早上 8:00 发送推送
@@ -220,9 +222,31 @@ class SchedulerService {
     this.reviewReminderJob = cron.schedule('0 21 * * *', () => {
       this.sendReviewReminder();
     }, { timezone: 'Asia/Shanghai' });
+
+    // 每天晚上 11:00 自动生成每日总结
+    this.dailySummaryJob = cron.schedule('0 23 * * *', () => {
+      this.generateDailySummary();
+    }, { timezone: 'Asia/Shanghai' });
+
+    // 每周日凌晨 2:00 清理 90 天前对话
+    this.conversationCleanupJob = cron.schedule('0 2 * * 0', () => {
+      this.cleanupOldConversations();
+    }, { timezone: 'Asia/Shanghai' });
   }
 }
 ```
+
+**每日自动总结流程**：
+1. 获取当日对话历史（ConversationHistoryRepository）
+2. 获取当日完成任务（DailyTaskRepository）
+3. 调用 AI 生成 200-300 字总结
+4. 自动创建日记条目（ReviewRepository）
+5. 用户可在日历中编辑或删除
+
+**对话清理策略**：
+- 保留 90 天内的详细对话
+- 自动删除过期记录防止数据库膨胀
+- 按用户分别清理
 
 ---
 
@@ -880,6 +904,7 @@ wsService.sendToUser(userId, {
 | v1.0 | 2026-03-01 | 初始版本，JSON 文件存储                         |
 | v2.0 | 2026-03-15 | 重构为模块化架构                                |
 | v3.0 | 2026-04-04 | SQLite 迁移 + Service 层 + 定时任务 + WebSocket |
+| v4.0 | 2026-04-07 | 日历日记 + 每日自动总结 + AI 任务检测 + 对话清理 |
 
 ---
 

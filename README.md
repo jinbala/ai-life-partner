@@ -8,10 +8,12 @@
 - 会挑战你、质疑你、拉住你、逼你成长
 - 终极目标：你自己越来越强，最终不再需要它
 
+---
+
 ## ✨ 核心功能
 
 ### 对话系统
-- 🖥️ **Web 聊天界面** - 浏览器直接对话，实时通信
+- 🖥️ **Web 聊天界面** - 浏览器实时对话
 - 📱 **飞书机器人** - 在飞书中随时沟通
 - 🔌 **多模型支持** - Claude/GPT/DeepSeek/Kimi/Qwen 等
 
@@ -25,17 +27,21 @@
 ### 智能进化系统
 - 👤 **用户画像** - 自动学习和更新你的行为模式
 - 🧠 **认知挑战** - 针对弱点生成两难问题
-- ⚠️ **预警系统** - 检测偏离目标的行为
 - 📊 **成长报告** - 月度/季度/半年度体检
 - 🔄 **画像进化** - AI 自动分析对话，提取用户信息并更新画像（每 5 次对话）
 - 📈 **能力成长曲线** - 追踪能力分数变化轨迹
 - 💾 **自动记忆创建** - 从对话中提取重要事实创建长期记忆
 
-### 定时推送
+### 自动化功能
 - ☀️ **早安推送** - 每日 8:00 发送任务和目标
-- 🔔 **复盘提醒** - 提醒进行每日复盘
+- 🔔 **复盘提醒** - 每晚 21:00 提醒复盘
+- 📅 **日历日记** - 每日 23:00 自动生成当日总结
+- 🧹 **对话清理** - 每周日凌晨 2:00 清理 90 天前对话
+- ✅ **任务检测** - AI 自动识别用户是否完成任务
 
-## 快速开始
+---
+
+## 🚀 快速开始
 
 ### 1. 安装依赖
 
@@ -45,29 +51,32 @@ npm install
 
 ### 2. 配置环境变量
 
-复制 `.env.example` 到 `.env`：
-
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 配置 API 密钥：
+编辑 `.env` 文件：
 
 ```bash
-# AI 模型配置
+# AI 模型配置（推荐 aipaibox.com 中转）
 AI_MODEL_PROVIDER=custom
 CUSTOM_API_BASE_URL=https://api.aipaibox.com/v1
 CUSTOM_API_MODEL=claude-sonnet-4-6
 CUSTOM_API_KEY=sk-xxx
 
-# 飞书应用配置（可选）
-FEISHU_APP_ID=
-FEISHU_APP_SECRET=
-FEISHU_VERIFICATION_TOKEN=
-
 # 服务器配置
 PORT=3000
 ```
+
+**支持的模型提供商**：
+- `custom` - 自定义 OpenAI 兼容接口（推荐）
+- `deepseek` - DeepSeek（性价比高）
+- `claude` - Anthropic Claude
+- `openai` - OpenAI GPT
+- `moonshot` - 月之暗面 Kimi
+- `qwen` - 通义千问
+- `zhipu` - 智谱 GLM
+- `ollama` - 本地 Ollama
 
 ### 3. 启动服务
 
@@ -90,7 +99,9 @@ npm start
 curl http://localhost:3000/health
 ```
 
-## 项目结构
+---
+
+## 📁 项目结构
 
 ```
 ai-life-partner/
@@ -100,6 +111,7 @@ ai-life-partner/
 │   │   │   ├── chat.ts         # 聊天接口
 │   │   │   ├── feishu.ts       # 飞书 webhook
 │   │   │   ├── health.ts       # 健康检查
+│   │   │   ├── calendar.ts     # 日历日记 API
 │   │   │   └── visualization.ts # 数据可视化
 │   │   └── middleware/         # Express 中间件
 │   │       ├── auth.ts         # API 认证 + JWT
@@ -111,7 +123,7 @@ ai-life-partner/
 │   │   │   └── aiPersona.ts    # AI 人设提示词
 │   │   ├── user/               # 用户服务
 │   │   │   ├── portraitService.ts  # 用户画像
-│   │   │   ├── portraitEvolutionService.ts  # 画像进化（自动更新）
+│   │   │   ├── portraitEvolutionService.ts  # 画像进化
 │   │   │   └── goalService.ts      # 目标管理
 │   │   ├── memory/             # 记忆服务
 │   │   │   └── memoryService.ts    # 长期记忆
@@ -123,19 +135,12 @@ ai-life-partner/
 │   │   │   ├── cognitionChallengeService.ts  # 认知挑战
 │   │   │   └── reviewService.ts  # 复盘系统
 │   │   ├── scheduler/          # 定时任务
-│   │   │   └── schedulerService.ts
+│   │   │   └── schedulerService.ts  # Cron 任务
 │   │   └── export/             # 数据导出
-│   │       └── dataExportService.ts
 │   │
 │   ├── database/               # 数据库层
-│   │   ├── IDatabase.ts        # 数据库接口定义
-│   │   ├── DatabaseFactory.ts  # 数据库工厂
-│   │   ├── BaseRepository.ts   # Repository 基类
 │   │   ├── index.ts            # 数据库连接
 │   │   ├── migrations.ts       # 数据库迁移
-│   │   ├── adapters/           # 数据库适配器
-│   │   │   ├── SQLiteAdapter.ts
-│   │   │   └── MySQLAdapter.ts
 │   │   └── repositories/       # 数据仓库
 │   │       ├── userRepository.ts
 │   │       ├── portraitRepository.ts
@@ -147,17 +152,15 @@ ai-life-partner/
 │   │       ├── challengeRepository.ts
 │   │       ├── reviewRepository.ts
 │   │       ├── sessionRepository.ts
-│   │       └── tokenUsageRepository.ts
-│   │
-│   ├── context/                # 上下文管理
-│   │   └── sessionManager.ts   # 会话管理
+│   │       ├── tokenUsageRepository.ts
+│   │       └── conversationHistoryRepository.ts
 │   │
 │   ├── integrations/           # 第三方集成
 │   │   └── feishu/             # 飞书机器人
 │   │       └── messageService.ts
 │   │
-│   ├── constants/              # 常量配置
-│   │   └── index.ts            # 系统提示词、配置常量
+│   ├── context/                # 上下文管理
+│   │   └── sessionManager.ts   # 会话管理
 │   │
 │   ├── utils/                  # 工具函数
 │   │   ├── logger.ts           # 日志系统
@@ -166,83 +169,24 @@ ai-life-partner/
 │   │
 │   ├── types/                  # 类型定义
 │   │   ├── portrait.ts
-│   │   ├── goal.ts
-│   │   └── index.ts
+│   │   └── goal.ts
 │   │
 │   └── server.ts               # 主入口
 │
-├── data/                       # 数据存储
-│   ├── app.db                  # SQLite 数据库
-│   └── ...                     # 其他数据文件
-│
 ├── public/                     # 静态文件
-│   └── index.html              # Web 聊天界面
+│   ├── index.html              # Web 聊天界面
+│   ├── calendar.html           # 日历日记页面
+│   └── viz.html                # 数据可视化页面
 │
-├── tests/                      # 测试
-│   ├── unit/                   # 单元测试
-│   └── integration/            # 集成测试
+├── data/                       # 数据存储
+│   └── app.db                  # SQLite 数据库
 │
 └── package.json
 ```
 
-## 技术栈
+---
 
-- **运行时**: Node.js 18+
-- **语言**: TypeScript 5.9
-- **框架**: Express 4.x
-- **数据库**: SQLite / MySQL 8.0+ (可切换)
-- **AI**: 多模型支持（OpenAI / DeepSeek / Claude / Kimi / Qwen / ZhiPU / Ollama）
-- **渠道**: 飞书机器人 + Web 聊天界面
-- **部署**: 支持本地开发/云服务器/Docker
-
-## 数据库
-
-项目支持 **SQLite** 和 **MySQL** 双数据库，可通过环境变量切换：
-
-### SQLite 模式（默认）
-
-无需额外配置，数据存储在 `data/app.db`：
-
-```bash
-# .env 文件中不配置 DB_* 变量即使用 SQLite
-NODE_ENV=development
-```
-
-### MySQL 模式
-
-在 `.env` 中添加以下配置：
-
-```bash
-# 数据库配置
-DB_TYPE=mysql
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=ai_life_partner
-```
-
-### MySQL 一键配置（Windows）
-
-以管理员身份运行 PowerShell 执行：
-
-```powershell
-.\scripts\setup-mysql.ps1
-```
-
-### Docker 方式运行 MySQL
-
-```bash
-docker run -d --name mysql-ai-life \
-  -e MYSQL_ROOT_PASSWORD=root123456 \
-  -e MYSQL_DATABASE=ai_life_partner \
-  -p 3306:3306 \
-  mysql:8.0
-```
-
-详见：[README.MySQL.md](README.MySQL.md)
-
-## 使用方式
+## 💻 使用方式
 
 ### Web 聊天
 
@@ -262,51 +206,51 @@ docker run -d --name mysql-ai-life \
 /challenge     - 查看认知挑战
 /challenge-now - 立即生成挑战
 /review        - 开始每日复盘
-/morning-push on|off - 控制早上推送
 /reset         - 重置会话
 ```
 
 ### 快捷用语
 
-- `紧急` / `急` - 紧急决策模式
-- `纠结` / `要不要` / `该不该` / `帮我分析` - 决策分析模式
+- `紧急` / `急` - 紧急决策模式（3 个关键问题）
+- `纠结` / `要不要` / `该不该` / `帮我分析` - 决策分析模式（6 步框架）
 - `复盘` - 开始每日复盘
 
-## 开发命令
+---
 
-```bash
-# 开发模式
-npm run dev
+## 🗄️ 数据库
 
-# 构建
-npm run build
+项目使用 **SQLite** 数据库，数据存储在 `data/app.db`。
 
-# 启动
-npm start
+### 核心表
 
-# 类型检查
-npm run typecheck
+| 表名 | 说明 |
+|------|------|
+| `users` | 用户表 |
+| `user_portraits` | 用户画像 |
+| `goals` | 目标表（树状结构） |
+| `daily_tasks` | 日常任务 |
+| `memories` | 长期记忆（6 种类型） |
+| `ability_assets` | 能力资产（5 种类型） |
+| `decisions` | 决策记录 |
+| `challenges` | 认知挑战 |
+| `reviews` | 复盘记录/日记 |
+| `sessions` | 会话管理 |
+| `conversation_history` | 对话历史 |
+| `token_usage` | Token 使用统计 |
 
-# 测试
-npm test
-npm run test:unit
-npm run test:integration
+---
 
-# 清理
-npm run clean
-```
-
-## 核心特性详解
+## 📊 核心特性详解
 
 ### 1. 第一性原理决策
 
 使用 6 步决策框架：
-1. 本质问题（第一性原理）
-2. 信息盘点（已知 + 缺失 + 通用知识标注）
-3. 选项分析（代价/收益/可逆性/长期影响）
-4. 初级建议 + 引导思考
-5. 执行计划 + 预期结果
-6. 止损线（什么情况说明选错了 + 备选方案）
+1. **本质问题**（第一性原理）
+2. **信息盘点**（已知 + 缺失 + 通用知识标注）
+3. **选项分析**（代价/收益/可逆性/长期影响）
+4. **初级建议 + 引导思考**
+5. **执行计划 + 预期结果**
+6. **止损线**（什么情况说明选错了 + 备选方案）
 
 ### 2. 进化式用户画像
 
@@ -317,12 +261,11 @@ npm run clean
 - 能力雷达（商业判断/执行力/认知力/风控/学习力）
 - 成长轨迹
 
-**画像进化服务**（PortraitEvolutionService）：
+**画像进化服务**：
 - 每 5 次对话自动分析用户信息
 - 提取：行业、资源、卡点、拖延触发因素、决策风格
 - 自动创建长期记忆条目
 - 根据决策结果动态调整能力分数
-- 每周一上午 10 点执行周画像分析
 - 成长轨迹 API：`GET /api/viz/growth-summary?days=30`
 
 ### 3. 长期记忆系统
@@ -358,65 +301,175 @@ npm run clean
 - 偏差分析
 - 经验提取为资产
 
-### 7. 数据库架构
+### 7. 日历日记
 
-采用 Repository 模式，支持 SQLite/MySQL 双数据库：
-- **IDatabase** - 统一数据库接口
-- **DatabaseFactory** - 工厂模式创建适配器
-- **BaseRepository** - 通用 CRUD 基类
-- **SQLiteAdapter/MySQLAdapter** - 数据库适配器
-- **getNowSql()** - 动态兼容时间函数
+- 每日 23:00 自动生成当日总结（对话 + 任务 + 洞察）
+- 用户可编辑或删除自动生成的日记
+- 支持查看历史日期的任务完成情况和对话历史
 
-## 配置文件
+---
 
-详见：[MODEL_CONFIG.md](MODEL_CONFIG.md)
+## 🛠️ 开发命令
 
-## 部署指南
+```bash
+# 开发模式（热重载）
+npm run dev
+
+# 构建
+npm run build
+
+# 启动
+npm start
+
+# 类型检查
+npm run typecheck
+
+# 清理
+npm run clean
+```
+
+---
+
+## 📦 Docker 部署
+
+```bash
+# 构建并启动
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+```
+
+访问：
+- 聊天页面：http://localhost:3000/chat
+- 数据中心：http://localhost:3000/viz
+- 健康检查：http://localhost:3000/health
+
+---
+
+## 🚀 部署指南
+
+### 云服务器部署
+
+1. **安装 Node.js**
+```bash
+curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+sudo yum install -y nodejs
+```
+
+2. **上传代码**
+```bash
+git clone <你的仓库> /opt/ai-life-partner
+cd /opt/ai-life-partner
+npm install
+npm run build
+```
+
+3. **配置环境变量**
+```bash
+cp .env.example .env
+vim .env  # 填写实际配置
+```
+
+4. **使用 PM2 管理**
+```bash
+npm install -g pm2
+pm2 start dist/server.js --name ai-life-partner
+pm2 startup
+pm2 save
+```
+
+5. **配置 Nginx 反向代理**
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+    }
+}
+```
 
 详见：[DEPLOY.md](DEPLOY.md)
 
-## 快速开始指南
+---
 
-详见：[QUICKSTART.md](QUICKSTART.md)
+## 🔒 安全建议
 
-## 重构报告
+1. **不要提交敏感信息**
+   - `.env` 文件已在 `.gitignore` 中
+   - 使用环境变量管理敏感配置
 
-详见：[REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md)
+2. **启用 HTTPS**
+   - 生产环境必须使用 HTTPS
+   - 使用 Let's Encrypt 免费证书
 
-## 数据库优化
+3. **定期备份数据**
+   ```bash
+   # 每天凌晨 2 点备份
+   0 2 * * * cp /opt/ai-life-partner/data/app.db /opt/ai-life-partner/backups/app_$(date +\%Y\%m\%d).db
+   ```
 
-详见：[DATABASE_OPTIMIZATION.md](DATABASE_OPTIMIZATION.md)
+4. **定期更新依赖**
+   ```bash
+   npm audit
+   npm update
+   ```
 
-## 开发路线图
+---
+
+## 📈 开发路线图
 
 ### ✅ Phase 1 - 核心层（已完成）
-- AI 人格和输入校验
-- 进化式用户画像
-- 目标管理和早推
-- 飞书机器人框架
-- Web 聊天界面
-- 数据库集成
+- [x] AI 人格（第一性原理 + 输入校验）
+- [x] 进化式用户画像
+- [x] 目标管理 + 早推送
+- [x] 飞书机器人基础框架
+- [x] Web 聊天界面
+- [x] 数据库集成
 
-### 🔄 Phase 2 - 生长层（进行中）
-- 决策引擎（6 步框架）✅
-- 紧急决策快速通道 ✅
-- 复盘系统（日/周/月）✅
-- 能力资产库 ✅
-- 预期 - 结果闭环 ✅
-- 长期记忆系统 ✅
+### ✅ Phase 2 - 生长层（已完成）
+- [x] 决策引擎（6 步框架）
+- [x] 紧急决策快速通道
+- [x] 复盘系统（日/周/月）
+- [x] 能力资产库
+- [x] 预期 - 结果闭环
+- [x] 长期记忆系统
+- [x] 日历日记
+- [x] 每日自动总结
+- [x] 对话自动清理
+- [x] AI 任务完成检测
 
 ### ⏳ Phase 3 - 进化层（规划中）
-- 预警系统
-- 认知挑战（周二/周五）
-- 元认知训练
-- 环境变量提醒
-- 战略止损线
-- 体检报告（月/季/半年）
+- [ ] 预警系统
+- [ ] 认知挑战（周二/周五）
+- [ ] 元认知训练
+- [ ] 环境变量提醒
+- [ ] 战略止损线
+- [ ] 体检报告（月/季/半年）
 
-## 许可证
+---
+
+## 🧰 技术栈
+
+- **运行时**: Node.js 18+
+- **语言**: TypeScript 5.9
+- **框架**: Express 4.x
+- **数据库**: SQLite / MySQL 8.0+ (可切换)
+- **AI**: 多模型支持（OpenAI / DeepSeek / Claude / Kimi / Qwen / ZhiPU / Ollama）
+- **渠道**: 飞书机器人 + Web 聊天界面
+- **部署**: 支持本地开发/云服务器/Docker
+
+---
+
+## 📝 许可证
 
 ISC
 
 ---
 
-**最后更新**: 2026-04-06
+**最后更新**: 2026-04-07
