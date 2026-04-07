@@ -1328,7 +1328,8 @@
         original: originalText,
         aiVersion: '',
         textareaId: textarea.id,
-        type: '润色'
+        type: '润色',
+        dateStr: selectedDate
       };
 
       // 显示加载动画
@@ -1380,7 +1381,8 @@
         original: originalText,
         aiVersion: '',
         textareaId: textarea.id,
-        type: '扩写'
+        type: '扩写',
+        dateStr: selectedDate
       };
 
       // 显示加载动画
@@ -1443,12 +1445,19 @@
     }
 
     // 使用 AI 版本
-    window.useAiVersion = function() {
+    window.useAiVersion = async function() {
       const textarea = document.getElementById(aiComparisonData.textareaId);
       if (textarea && aiComparisonData.aiVersion) {
         textarea.value = aiComparisonData.aiVersion;
         updateWordCount();
-        alert('✨ 已采用 AI ' + aiComparisonData.type + '版本！');
+
+        // 自动保存
+        const dateStr = aiComparisonData.dateStr || selectedDate;
+        if (dateStr) {
+          await saveEntry(dateStr, aiComparisonData.aiVersion);
+        } else {
+          alert('✨ 已采用 AI ' + aiComparisonData.type + '版本！请手动保存。');
+        }
       }
       closeModal();
     };
@@ -1546,9 +1555,9 @@
     }
 
     // 保存日记
-    async function saveEntry(dateStr) {
+    async function saveEntry(dateStr, saveContent) {
       const textarea = document.getElementById('entryTextarea');
-      const content = textarea.value.trim();
+      const content = saveContent !== undefined ? saveContent : textarea.value.trim();
 
       if (!content) {
         alert('请输入日记内容');
@@ -1571,7 +1580,11 @@
         const result = await response.json();
 
         if (result.success) {
-          alert('保存成功！');
+          if (saveContent !== undefined) {
+            alert('✨ AI ' + aiComparisonData.type + '已保存！');
+          } else {
+            alert('保存成功！');
+          }
           entries[dateStr] = { content: content, mood: mood };
           renderCalendar();
           openDayModal(selectedDate);
