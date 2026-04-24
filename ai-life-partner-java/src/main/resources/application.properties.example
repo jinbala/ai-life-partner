@@ -1,0 +1,112 @@
+# AI 人生合伙人 - 配置文件
+# 复制此文件为 application.properties 并填入真实的 API Key
+
+# =====================
+# 服务器配置
+# =====================
+quarkus.http.port=${APP_PORT:8080}
+quarkus.http.host=0.0.0.0
+quarkus.application.name=ai-life-partner
+
+# =====================
+# 开发环境配置（默认 H2 内存数据库）
+# =====================
+%dev.quarkus.datasource.db-kind=h2
+%dev.quarkus.datasource.jdbc.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+%dev.quarkus.datasource.username=sa
+%dev.quarkus.datasource.password=
+%dev.quarkus.hibernate-orm.database.generation=drop-and-create
+%dev.quarkus.hibernate-orm.log.sql=false
+
+# =====================
+# 生产环境配置（MySQL）
+# =====================
+%prod.quarkus.datasource.db-kind=mysql
+%prod.quarkus.datasource.username=${DB_USERNAME:root}
+%prod.quarkus.datasource.password=${DB_PASSWORD:password}
+%prod.quarkus.datasource.jdbc.url=jdbc:mysql://localhost:3306/ai_partner?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+%prod.quarkus.hibernate-orm.database.generation=none
+%prod.quarkus.flyway.migrate-at-start=true
+
+# =====================
+# 数据库通用配置
+# =====================
+quarkus.datasource.jdbc.min-size=5
+quarkus.datasource.jdbc.max-size=20
+quarkus.datasource.jdbc.acquisition-timeout=5
+quarkus.hibernate-orm.log.sql=false
+quarkus.hibernate-orm.batch-fetch-size=20
+
+# =====================
+# AI 模型配置
+# =====================
+ai.provider=${AI_PROVIDER:custom}
+
+# Custom API 配置（推荐使用 aipaibox.com 中转）
+ai.custom.base-url=${CUSTOM_API_BASE_URL:https://api.aipaibox.com/v1}
+ai.custom.model=${CUSTOM_API_MODEL:claude-sonnet-4-6}
+ai.custom.api-key=${CUSTOM_API_KEY:}
+
+# DeepSeek
+ai.deepseek.api-key=${DEEPSEEK_API_KEY:}
+
+# OpenAI
+ai.openai.api-key=${OPENAI_API_KEY:}
+
+# Claude
+ai.claude.api-key=${ANTHROPIC_API_KEY:}
+
+# Moonshot (月之暗面)
+ai.moonshot.api-key=${MOONSHOT_API_KEY:}
+
+# Qwen (通义千问)
+ai.qwen.api-key=${QWEN_API_KEY:}
+
+# Zhipu (智谱)
+ai.zhipu.api-key=${ZHIPU_API_KEY:}
+
+# Ollama (本地)
+ai.ollama.base-url=${OLLAMA_BASE_URL:http://localhost:11434}
+
+# =====================
+# JWT 配置（生产环境需要配置）
+# =====================
+# mp.jwt.verify.publickey.location=publicKey.pem
+# mp.jwt.verify.issuer=https://ai-life-partner.com
+# smallrye.jwt.sign.key.location=privateKey.pem
+
+# JWT Token 过期时间（小时）
+# jwt.expiration.hours=24
+
+# =====================
+# 飞书配置
+# =====================
+feishu.app-id=${FEISHU_APP_ID:}
+feishu.app-secret=${FEISHU_APP_SECRET:}
+feishu.verification-token=${FEISHU_VERIFICATION_TOKEN:}
+feishu.encryption-key=${FEISHU_ENCRYPTION_KEY:}
+
+# =====================
+# 日志配置
+# =====================
+quarkus.log.level=INFO
+quarkus.log.category."com.aipartner".level=DEBUG
+quarkus.log.console.enable=true
+quarkus.log.file.enable=true
+quarkus.log.file.path=logs/app.log
+
+# =====================
+# 健康检查
+# =====================
+quarkus.smallrye-health.root-path=/health
+
+# =====================
+# CORS 配置
+# =====================
+quarkus.http.cors=true
+quarkus.http.cors.origins=*
+
+# =====================
+# 定时任务配置（开发环境禁用）
+# =====================
+quarkus.scheduler.enabled=false
